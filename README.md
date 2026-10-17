@@ -1,5 +1,7 @@
 # Ihoraa
 
+AI-powered application security scanner and automated remediation prototype.
+
 Security for vibe coders. Upload a project, find exposed API keys and secure them in one click.
 
 ## Run it
