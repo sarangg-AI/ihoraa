@@ -1,26 +1,102 @@
 @import "tailwindcss";
 
+/* Ihoraa design tokens. Dark-first security palette. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: dark;
+  --bg: #070b14;
+  --bg-elev: #0c1220;
+  --surface: #101828;
+  --surface-2: #151f33;
+  --border: #1e2a40;
+  --border-strong: #2b3a57;
+  --text: #e6ebf5;
+  --text-muted: #8b97ad;
+  --text-dim: #5f6b82;
+  --accent: #5b8cff;
+  --accent-strong: #7aa2ff;
+  --accent-soft: rgb(91 140 255 / 0.12);
+  --ok: #34d399;
+  --ok-soft: rgb(52 211 153 / 0.12);
+  --warn: #fbbf24;
+  --warn-soft: rgb(251 191 36 / 0.12);
+  --danger: #f87171;
+  --danger-soft: rgb(248 113 113 / 0.12);
+  --critical: #ff5470;
+  --critical-soft: rgb(255 84 112 / 0.14);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-bg: var(--bg);
+  --color-bg-elev: var(--bg-elev);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-muted: var(--text-muted);
+  --color-dim: var(--text-dim);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-critical: var(--critical);
+  --color-critical-soft: var(--critical-soft);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  background-image:
+    radial-gradient(1200px 600px at 50% -200px, rgb(91 140 255 / 0.10), transparent 70%),
+    radial-gradient(800px 400px at 100% 0%, rgb(124 58 237 / 0.06), transparent 70%);
+  background-repeat: no-repeat;
+}
+
+::selection {
+  background: rgb(91 140 255 / 0.35);
+}
+
+.grid-bg {
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.03) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+}
+
+@keyframes scan-line {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(400%); }
+}
+
+.animate-scan-line {
+  animation: scan-line 1.6s ease-in-out infinite;
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.35s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-scan-line,
+  .animate-fade-up {
+    animation: none;
+  }
 }

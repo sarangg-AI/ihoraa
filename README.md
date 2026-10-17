@@ -1,36 +1,36 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Ihoraa
 
-## Getting Started
+Security for vibe coders. Upload a project, find exposed API keys and secure them in one click.
 
-First, run the development server:
+## Run it
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000 and click **Try a demo app** to see the full flow without your own code.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm test        # scanner + fixer unit tests
+npm run build   # production build
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## How it works
 
-## Learn More
+1. **Upload** (`components/UploadView.tsx`, `lib/client/project.ts`): drag and drop a folder or `.zip`. Files are read in the browser. `node_modules`, `.git`, build folders, lockfiles and binaries are skipped, and only text files go to the server.
+2. **Scan** (`POST /api/scan` → `lib/scanner/`): regex rules based on Gitleaks cover 19 key types (OpenAI, Anthropic, Stripe, AWS, Supabase, GitHub, Google…). An entropy check catches generic secrets. Each finding is classified as *visible in browser*, *server code*, *unprotected .env* or *config*. Raw secrets never leave the server: the UI only gets masked values.
+3. **Fix** (`lib/fixer/`): every fix is previewed as a masked diff first.
+   - Server code: the literal becomes an env lookup (`process.env.X`, `os.environ["X"]`…) and the value moves into `.env`.
+   - Browser code with secret keys: the key is removed. For OpenAI, Anthropic and Groq, a locked-down proxy route is generated. Every case gets a ready-to-paste prompt for the user's AI coding tool.
+   - Browser-safe keys (Google/Firebase): moved to `NEXT_PUBLIC_` / `VITE_` variables, plus advice to restrict them.
+   - `.env`, `.env.example` and `.gitignore` are created or updated, and an `IHORAA_REPORT.md` is added.
+4. **Download** (`POST /api/fix`): the server returns the changed files. The browser merges them with the original upload into `<project>-secured.zip`. Then the user works through the key-rotation checklist.
 
-To learn more about Next.js, take a look at the following resources:
+Nothing is stored. Both API routes are stateless and process uploads in memory.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Limits of this prototype
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Exposure detection is heuristic (paths, `"use client"`, framework).
+- Browser code that called an API directly still needs one manual change to use the generated proxy. The UI gives the user a prompt for their AI tool.
+- Moving a key does not un-leak it. Users must rotate every key that was found.
