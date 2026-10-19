@@ -52,6 +52,26 @@ const NOT_SECRET_NAME = /(public|publishable|anon|_url$|url$|_id$|endpoint|host|
 const HASH_OR_ID_NAME = /(?:hash|checksum|digest|fingerprint|sha\d*|md5|uuid|guid)$|(?:^|[_-])(?:ids?|refs?|arn)$/i;
 const CAMEL_ID_NAME = /[a-z\d](?:Ids?|Refs?|Arn)$/;
 
+// .env settings that sit next to secrets: `TOKEN_EXPIRY=30d`, `API_KEY_HEADER=Authorization`.
+const SETTING_NAME = /_(?:ttl|expiry|expires(?:_in)?|expiration|timeout|max_age|header|algo|algorithm|issuer|audience)$/i;
+const FLAG_VALUE = /^(?:true|false|yes|no|on|off|enabled|disabled|none|null)$/i;
+const DURATION_VALUE = /^\d+(?:\.\d+)?(?:ms|s|m|h|d|w|y)$/i;
+const NUMBER_VALUE = /^-?\d+(?:\.\d+)?$/;
+
+/** A URL with no password, no query string and no random-looking path segment (unlike webhook URLs). */
+function isPlainUrl(value: string): boolean {
+  const m = /^(?:https?|wss?):\/\/([^/?#\s]+)(\/[^?#\s]*)?$/i.exec(value);
+  if (!m || m[1].includes("@")) return false;
+  return !(m[2] ?? "").split("/").some(looksRandom);
+}
+
+/** True for `.env` values that configure something rather than unlock it. */
+function isSettingValue(name: string, value: string): boolean {
+  if (SETTING_NAME.test(name) || FLAG_VALUE.test(value) || DURATION_VALUE.test(value) || isPlainUrl(value)) return true;
+  // `SESSION_TTL=86400` is a setting, `ADMIN_PASSWORD=12345678` is a weak password.
+  return NUMBER_VALUE.test(value) && !/passw|pwd/i.test(name);
+}
+
 /** True when a variable name suggests its value is a secret. */
 function isSecretName(name: string): boolean {
   if (!SECRET_NAME.test(name) || NOT_SECRET_NAME.test(name)) return false;
@@ -140,7 +160,7 @@ function findMatches(file: SourceFile, envFile: boolean): Match[] {
         continue;
       }
       if (!isSecretName(name)) continue;
-      if (value.length < 8 || isPlaceholder(value)) continue;
+      if (value.length < 8 || isPlaceholder(value) || isSettingValue(name, value)) continue;
       found.push({ rule: ENV_FILE_RULE, secret: value, start, end, varName: name });
     }
     return found;

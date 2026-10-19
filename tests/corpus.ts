@@ -56,6 +56,9 @@ function secretCases(): CorpusCase[] {
   const uuidKey = uuid();
   const hexToken = hex(40);
   const androidKey = fake.generic();
+  const webhook = "https://hooks.slack.com/services/T" + randomChars(8, "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789") + "/B" + randomChars(8, "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789") + "/" + randomChars(24);
+  const numericPassword = randomChars(8, "0123456789");
+  const weakJwt = "super" + "secret";
 
   return [
     leak("provider key", "OpenAI key in a browser component", [
@@ -107,6 +110,10 @@ function secretCases(): CorpusCase[] {
     ], [stripe]),
     leak(".env file", "Session secret in a .env that is not gitignored", [file(".env", `SESSION_SECRET=${session}`)], [session]),
     leak(".env file", "Weak admin password in a .env that is not gitignored", [file(".env", `ADMIN_PASSWORD=${weakPassword}`)], [weakPassword]),
+    // Settings are skipped in .env files; these look like settings but are secrets.
+    leak(".env file", "Numbers-only password in a .env", [file(".env", `ADMIN_PASSWORD=${numericPassword}`)], [numericPassword]),
+    leak(".env file", "Plain-word JWT secret in a .env", [file(".env", `JWT_SECRET=${weakJwt}`)], [weakJwt]),
+    leak(".env file", "Webhook URL with a token in its path", [file(".env", `ALERTS_WEBHOOK_TOKEN=${webhook}`)], [webhook]),
     leak(".env file", "Real key copied into .env.example", [
       file(".env.example", `OPENAI_API_KEY=${exampleKey}`),
       file(".gitignore", ".env*", "!.env.example"),
