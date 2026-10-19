@@ -151,6 +151,29 @@ export const RULES: Rule[] = [
     rotateUrl: "https://api.slack.com/apps",
   },
   {
+    id: "slack-webhook-url",
+    provider: "Slack",
+    title: "Slack webhook URL",
+    // services/T…/B…/<token>, workflows/T…/A…/<id>/<token>, triggers/T…/<id>/<token>.
+    pattern: /(?:\bhttps?:\/\/)?\bhooks\.slack\.com\/(?:services|workflows|triggers)\/T[A-Z0-9]{6,12}\/(?:[A-Za-z0-9]{1,40}\/){1,2}[A-Za-z0-9]{20,}/g,
+    severity: "high",
+    whatItCanDo:
+      "This web address works like a password. Anyone who has it can post messages into your Slack channel, including fake alerts or phishing links.",
+    envName: "SLACK_WEBHOOK_URL",
+    rotateUrl: "https://api.slack.com/apps",
+  },
+  {
+    id: "discord-webhook-url",
+    provider: "Discord",
+    title: "Discord webhook URL",
+    pattern: /(?:\bhttps?:\/\/)?\b(?:ptb\.|canary\.)?discord(?:app)?\.com\/api(?:\/v\d{1,2})?\/webhooks\/\d{17,20}\/[A-Za-z0-9_-]{60,}/g,
+    severity: "high",
+    whatItCanDo:
+      "This web address works like a password. Anyone who has it can post messages into your Discord channel under your bot's name, including spam or scam links.",
+    envName: "DISCORD_WEBHOOK_URL",
+    rotateUrl: "https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks",
+  },
+  {
     id: "sendgrid-api-key",
     provider: "SendGrid",
     title: "SendGrid API key",

@@ -128,6 +128,7 @@ describe("buildFix", () => {
       { path: "scripts/seed.py", content: `TOKEN = "${fake.github()}"\nheaders = {"Authorization": f"token {TOKEN}"}\n` },
       { path: ".env", content: `SUPABASE_SERVICE_ROLE_KEY=${fake.supabaseService()}\n` },
       { path: "README.md", content: `Use key ${fake.anthropic()} to test.\n` },
+      { path: "server/alerts.js", content: `await fetch("${fake.slackWebhook()}", { method: "POST" });\n` },
     ];
     const first = analyze({ projectName: "demo", files }).result;
     expect(first.findings.length).toBeGreaterThanOrEqual(6);
@@ -201,6 +202,30 @@ describe("regressions", () => {
       const { out, result } = expectNoLeak([{ path: "README.md", content: `Use key ${fake.anthropic()} to test.\n` }]);
       expect(out.get("README.md")).toBe("Use key IHORAA_MOVED_TO_ENV_ANTHROPIC_API_KEY to test.\n");
       expect(result.plan.manualSteps.some((m) => m.file === "README.md")).toBe(false);
+    });
+  });
+
+  describe("webhook URLs", () => {
+    it("moves Slack and Discord webhook URLs in server code to env variables", () => {
+      const slack = fake.slackWebhook();
+      const discord = fake.discordWebhook();
+      const { out } = expectNoLeak([
+        { path: "server/alerts.js", content: `await fetch("${slack}", { method: "POST" });\n` },
+        { path: "bot/notify.py", content: `DISCORD_WEBHOOK_URL = "${discord}"\n` },
+      ]);
+      expect(out.get("server/alerts.js")).toBe('await fetch(process.env.SLACK_WEBHOOK_URL, { method: "POST" });\n');
+      expect(out.get("bot/notify.py")).toBe('import os\nDISCORD_WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]\n');
+      expect(out.get(".env")).toContain(`SLACK_WEBHOOK_URL=${slack}`);
+      expect(out.get(".env")).toContain(`DISCORD_WEBHOOK_URL=${discord}`);
+    });
+
+    it("removes a webhook URL from browser code and docs", () => {
+      const { out } = expectNoLeak([
+        { path: "package.json", content: '{"dependencies":{"next":"16"}}' },
+        { path: "components/Feedback.tsx", content: `"use client";\nconst hook = "${fake.slackWebhook()}";\n` },
+        { path: "README.md", content: `Alerts go to ${fake.discordWebhook()}\n` },
+      ]);
+      expect(out.get("README.md")).toBe("Alerts go to IHORAA_MOVED_TO_ENV_DISCORD_WEBHOOK_URL\n");
     });
   });
 

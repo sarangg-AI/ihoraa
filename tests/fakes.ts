@@ -33,6 +33,11 @@ export const fake = {
   awsSecret: () => randomChars(40, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789/+"),
   supabaseSecret: () => ["sb", "secret", randomChars(32)].join("_"),
   slack: () => "xo" + "xb-" + randomChars(12, "0123456789") + "-" + randomChars(24),
+  slackWebhook: () =>
+    "https://hooks." + "slack.com/services/T" + randomChars(10, "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789") +
+    "/B" + randomChars(10, "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789") + "/" + randomChars(24),
+  discordWebhook: () =>
+    "https://discord." + "com/api/webhooks/" + randomChars(19, "0123456789") + "/" + randomChars(68, "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz0123456789_-"),
   sendgrid: () => "S" + "G." + randomChars(22) + "." + randomChars(43),
   twilio: () => "S" + "K" + randomChars(32, "0123456789abcdef"),
   mailgun: () => "ke" + "y-" + randomChars(32),

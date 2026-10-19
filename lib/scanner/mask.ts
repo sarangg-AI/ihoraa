@@ -1,7 +1,7 @@
 const BULLET = "•";
 
 const KNOWN_PREFIX =
-  /^(sk-ant-[a-z]+\d*-|sk-(?:proj|svcacct|admin)-|sk-|[sr]k_(?:live|test)_|sb_secret_|AKIA|ASIA|gh[pousr]_|github_pat_|xox[baprs]-|SG\.|AIza|hf_|gsk_|r8_|key-|eyJ|-----BEGIN [A-Z ]*PRIVATE KEY-----)/;
+  /^(sk-ant-[a-z]+\d*-|sk-(?:proj|svcacct|admin)-|sk-|[sr]k_(?:live|test)_|sb_secret_|AKIA|ASIA|gh[pousr]_|github_pat_|xox[baprs]-|SG\.|AIza|hf_|gsk_|r8_|key-|eyJ|-----BEGIN [A-Z ]*PRIVATE KEY-----|(?:https?:\/\/)?hooks\.slack\.com\/[a-z]+\/|(?:https?:\/\/)?(?:ptb\.|canary\.)?discord(?:app)?\.com\/api(?:\/v\d+)?\/webhooks\/)/;
 
 /** How many characters to leave visible at the start and end of a secret. */
 function visibleEnds(secret: string): [number, number] {

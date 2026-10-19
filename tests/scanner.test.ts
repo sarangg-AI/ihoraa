@@ -21,6 +21,8 @@ describe("provider rules", () => {
     ["stripe-test-key", fake.stripeTest],
     ["supabase-secret-key", fake.supabaseSecret],
     ["slack-token", fake.slack],
+    ["slack-webhook-url", fake.slackWebhook],
+    ["discord-webhook-url", fake.discordWebhook],
     ["sendgrid-api-key", fake.sendgrid],
     ["twilio-api-key", fake.twilio],
     ["mailgun-api-key", fake.mailgun],
@@ -221,6 +223,14 @@ describe("helpers", () => {
     expect(masked.startsWith("sk-proj-")).toBe(true);
     expect(masked.endsWith(secret.slice(-4))).toBe(true);
     expect(masked).not.toContain(secret.slice(8, 20));
+  });
+
+  it("masks webhook URLs keeping the host and hiding the token", () => {
+    const slack = fake.slackWebhook();
+    expect(maskSecret(slack)).toMatch(/^https:\/\/hooks\.slack\.com\/services\/•+.{4}$/);
+    const discord = fake.discordWebhook();
+    expect(maskSecret(discord)).toMatch(/^https:\/\/discord\.com\/api\/webhooks\/•+.{4}$/);
+    expect(maskSecret(discord)).not.toContain(discord.split("/")[6].slice(0, 20));
   });
 
   it("never leaves the secret in snippets", () => {

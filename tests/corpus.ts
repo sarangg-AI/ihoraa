@@ -63,6 +63,10 @@ function secretCases(): CorpusCase[] {
   const markerAboveSecret = fake.generic();
   const wordyPassword = "Correct" + "HorseBatteryStaple";
   const lettersOnly = randomChars(32, "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz");
+  const slackWebhook = fake.slackWebhook();
+  const slackWebhookEnv = fake.slackWebhook();
+  const discordWebhook = fake.discordWebhook();
+  const discordAppWebhook = fake.discordWebhook().replace("discord.com", "discordapp.com");
 
   return [
     leak("provider key", "OpenAI key in a browser component", [
@@ -97,6 +101,16 @@ function secretCases(): CorpusCase[] {
     leak("provider key", "Slack token in a Python script", [
       file("scripts/notify.py", "from slack_sdk import WebClient", `client = WebClient(token="${slack}")`),
     ], [slack]),
+    // Webhook URLs end in URL, a name the generic check skips, so only the provider rules catch them.
+    leak("provider key", "Slack webhook URL in server code", [
+      file("server/alerts.js", `await fetch("${slackWebhook}", { method: "POST", body: JSON.stringify({ text }) });`),
+    ], [slackWebhook]),
+    leak("provider key", "Discord webhook URL in a Python bot", [
+      file("bot/notify.py", "import requests", `DISCORD_WEBHOOK_URL = "${discordWebhook}"`, 'requests.post(DISCORD_WEBHOOK_URL, json={"content": msg})'),
+    ], [discordWebhook]),
+    leak(".env file", "Webhook URLs in a .env that is not gitignored", [
+      file(".env", `SLACK_WEBHOOK_URL=${slackWebhookEnv}`, `DISCORD_WEBHOOK_URL=${discordAppWebhook}`),
+    ], [slackWebhookEnv, discordAppWebhook]),
     leak("generic secret", "Random secret in server code", [file("server/payments.js", `const paymentSecret = "${paymentSecret}";`)], [paymentSecret]),
     leak("generic secret", "Django SECRET_KEY", [file("myapp/settings.py", `SECRET_KEY = "${django}"`, "DEBUG = False")], [django]),
     leak("generic secret", "Client secret in a JSON config", [
@@ -264,6 +278,17 @@ function cleanCases(): CorpusCase[] {
     ]),
     clean("ordinary code", "Minified code between two quotes", [
       file("public/bundle.js", 'if(r)e.credentials="+A)}s=makeRequest({urlList:[t]});n="omit";'),
+    ]),
+    clean("tests and docs", "Placeholder webhook URLs in docs and config", [
+      file(
+        "README.md",
+        "Create an incoming webhook (https://api.slack.com/messaging/webhooks) and set:",
+        "```",
+        "SLACK_WEBHOOK_URL=https://hooks." + "slack.com/services/T00000000/B00000000/" + "X".repeat(24),
+        "DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/{webhook.id}/{webhook.token}",
+        "```",
+      ),
+      file("server/config.js", `const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL ?? "https://hooks.` + `slack.com/services/T00000000/B00000000/${"X".repeat(24)}";`),
     ]),
     clean("tests and docs", "Example database URLs in docs", [
       file("README.md", "Connect with `mongodb://username:password@host:1234/app` or `postgres://user:pass@db.myapp.io:5432/app`."),
