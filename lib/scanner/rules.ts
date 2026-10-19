@@ -215,7 +215,8 @@ export const RULES: Rule[] = [
     provider: "Private key",
     title: "Private key block",
     // The body stops at the next BEGIN, so a file of BEGIN lines with no END stays fast.
-    pattern: /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----(?:(?!-----BEGIN )[\s\S]){20,20000}?-----END (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g,
+    // END must name the same key type as BEGIN; docs examples often mix them up.
+    pattern: /-----BEGIN (?<kind>(?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?)PRIVATE KEY(?: BLOCK)?-----(?:(?!-----BEGIN )[\s\S]){20,20000}?-----END \k<kind>PRIVATE KEY(?: BLOCK)?-----/g,
     severity: "critical",
     whatItCanDo: "A private key proves identity. Anyone with it can impersonate your server, app or account.",
     envName: "PRIVATE_KEY",
@@ -228,6 +229,8 @@ export const RULES: Rule[] = [
     severity: "critical",
     whatItCanDo: "This contains your database password. Anyone with it can read or wipe your data.",
     envName: "DATABASE_URL",
+    // `mongodb://username:password@host` in docs and tests is an example, not a leak.
+    validate: (url) => !/^[^:]+:\/\/[^:]*:(?:pass(?:word)?|pwd|secret|your[-_]?password)@/i.test(url),
   },
 ];
 

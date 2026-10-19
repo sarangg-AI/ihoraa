@@ -1,5 +1,5 @@
 import type { Exposure, Framework, IgnoredFinding, RawFinding, Severity, SnippetLine, SourceFile } from "../types";
-import { isPlaceholder, looksRandom } from "./entropy";
+import { isPlaceholder, looksLikeWords, looksRandom } from "./entropy";
 import { basename, classifyExposure, detectFramework, isEnvFile, isPublicEnvName, isTestOrExample } from "./exposure";
 import { maskRanges, maskSecret } from "./mask";
 import { RULES, SECRET_NAME, type Rule } from "./rules";
@@ -213,6 +213,8 @@ function findMatches(file: SourceFile, envFile: boolean, budget: number): Match[
     }
     if (!isSecretName(name)) continue;
     if (isPlaceholder(value) || !looksRandom(value)) continue;
+    // `tokenType = "?InterpolationInJSX"` is an identifier, but a wordy password is still a password.
+    if (looksLikeWords(value) && !/passw|pwd/i.test(name)) continue;
     if (overlaps(found, start, end)) continue;
     add({ rule: GENERIC_RULE, secret: value, start, end, varName: name });
   }

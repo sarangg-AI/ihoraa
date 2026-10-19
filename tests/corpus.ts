@@ -61,6 +61,8 @@ function secretCases(): CorpusCase[] {
   const weakJwt = "super" + "secret";
   const latestSecret = fake.generic();
   const markerAboveSecret = fake.generic();
+  const wordyPassword = "Correct" + "HorseBatteryStaple";
+  const lettersOnly = randomChars(32, "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz");
 
   return [
     leak("provider key", "OpenAI key in a browser component", [
@@ -106,6 +108,9 @@ function secretCases(): CorpusCase[] {
     leak("generic secret", "Secret whose name ends in ANDROID", [
       file(".env", `MAPS_API_KEY_ANDROID=${androidKey}`),
     ], [androidKey]),
+    // Word-like values are skipped, except under password names; random letters are not words.
+    leak("generic secret", "Wordy password in code", [file("server/admin.js", `const adminPassword = "${wordyPassword}";`)], [wordyPassword]),
+    leak("generic secret", "Random key made only of letters", [file("server/sign.js", `const signingSecret = "${lettersOnly}";`)], [lettersOnly]),
     leak(".env file", "Stripe key in a .env that is not gitignored", [
       file(".env", `STRIPE_SECRET_KEY=${stripe}`, "NEXT_PUBLIC_SITE_URL=https://myshop.io"),
       file(".gitignore", "node_modules"),
@@ -248,6 +253,23 @@ function cleanCases(): CorpusCase[] {
         'const secretsDir = "./config/secrets";',
         'const tokenEndpoint = "/oauth2/v1/token/refresh";',
       ),
+    ]),
+    // Found by scanning real open-source code (node_modules) during the T8 review.
+    clean("ordinary code", "Word-like identifiers under token names", [
+      file(
+        "lib/lexer.js",
+        'nextLastSignificantToken = "?NonExpressionParenEnd";',
+        'const messages = {UnexpectedToken:"Unexpected token =",DuplicateBinding:"Duplicate binding"};',
+      ),
+    ]),
+    clean("ordinary code", "Minified code between two quotes", [
+      file("public/bundle.js", 'if(r)e.credentials="+A)}s=makeRequest({urlList:[t]});n="omit";'),
+    ]),
+    clean("tests and docs", "Example database URLs in docs", [
+      file("README.md", "Connect with `mongodb://username:password@host:1234/app` or `postgres://user:pass@db.myapp.io:5432/app`."),
+    ]),
+    clean("tests and docs", "Docs example key with mismatched BEGIN and END", [
+      file("docs/env.md", "PRIVATE_KEY=\"-----BEGIN RSA PRIVATE KEY-----", randomChars(64), "-----END DSA PRIVATE KEY-----\""),
     ]),
     clean("ordinary code", "Small app with no secrets", [
       NEXT_PKG,
