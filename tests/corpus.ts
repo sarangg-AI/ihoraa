@@ -59,6 +59,7 @@ function secretCases(): CorpusCase[] {
   const webhook = "https://hooks.slack.com/services/T" + randomChars(8, "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789") + "/B" + randomChars(8, "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789") + "/" + randomChars(24);
   const numericPassword = randomChars(8, "0123456789");
   const weakJwt = "super" + "secret";
+  const latestSecret = fake.generic();
 
   return [
     leak("provider key", "OpenAI key in a browser component", [
@@ -121,6 +122,10 @@ function secretCases(): CorpusCase[] {
     leak("tests and docs", "Real provider key inside a test file", [
       file("tests/stripe.test.ts", 'import Stripe from "stripe";', `const stripe = new Stripe("${testFileKey}");`),
     ], [testFileKey]),
+    // Test files are matched by folder or file-name pattern, not by "test" anywhere in the path.
+    leak("tests and docs", "Generic secret in a file named like a test", [
+      file("server/latest-prices.js", `const pricingApiSecret = "${latestSecret}";`),
+    ], [latestSecret]),
     leak("tests and docs", "Real key pasted into the README", [
       file("README.md", "## Setup", "", `Set \`ANTHROPIC_API_KEY=${readmeKey}\` and run \`npm run dev\`.`),
     ], [readmeKey]),

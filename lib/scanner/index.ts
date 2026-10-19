@@ -1,6 +1,6 @@
 import type { Exposure, Framework, RawFinding, Severity, SnippetLine, SourceFile } from "../types";
 import { isPlaceholder, looksRandom } from "./entropy";
-import { basename, classifyExposure, detectFramework, isEnvFile, isPublicEnvName } from "./exposure";
+import { basename, classifyExposure, detectFramework, isEnvFile, isPublicEnvName, isTestOrExample } from "./exposure";
 import { maskRanges, maskSecret } from "./mask";
 import { RULES, SECRET_NAME, type Rule } from "./rules";
 import { isScannable, looksBinary, normalizePath } from "./walk";
@@ -165,6 +165,10 @@ function findMatches(file: SourceFile, envFile: boolean): Match[] {
     }
     return found;
   }
+
+  // Made-up values are normal in tests and examples. Provider-format keys above
+  // are still reported there: a real key is leaked wherever it sits.
+  if (isTestOrExample(file.path)) return found;
 
   for (const m of content.matchAll(new RegExp(ASSIGNMENT.source, "gd"))) {
     const name = m.groups!.name;

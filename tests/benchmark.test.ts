@@ -6,7 +6,7 @@ import { buildCorpus, type CorpusCase } from "./corpus";
 
 // Accuracy ratchet. These are the scanner's numbers on the corpus today. A change
 // may lower them (then lower them here too) but must never raise them.
-const BASELINE = { misses: 0, falseAlarms: 4 };
+const BASELINE = { misses: 0, falseAlarms: 0 };
 
 interface Graded {
   c: CorpusCase;

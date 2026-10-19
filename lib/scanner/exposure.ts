@@ -25,6 +25,15 @@ export function isEnvTemplate(path: string): boolean {
   return /^\.env\.(example|sample|template|dist|defaults)$/.test(basename(path));
 }
 
+const TEST_DIRS = new Set(["test", "tests", "__tests__", "spec", "e2e", "mocks", "__mocks__", "fixtures", "__fixtures__", "example", "examples", "stories"]);
+const TEST_FILE = /\.(?:test|spec|stories|mock|fixture)\.[\w]+$|^test_[\w]+\.py$|_test\.(?:py|go)$|^conftest\.py$/;
+
+/** Test, mock, fixture and example files, where made-up keys are normal. */
+export function isTestOrExample(path: string): boolean {
+  const parts = path.toLowerCase().split("/");
+  return parts.slice(0, -1).some((p) => TEST_DIRS.has(p)) || TEST_FILE.test(parts[parts.length - 1]);
+}
+
 export function detectFramework(files: SourceFile[]): Framework {
   const paths = new Set(files.map((f) => f.path));
   const pkg = files.find((f) => f.path === "package.json");
