@@ -13,6 +13,7 @@ npm run dev                                       # dev server on :3000 (Turbopa
 npm test                                          # all vitest tests
 npx vitest run tests/scanner.test.ts              # one file
 npx vitest run -t "removes AI keys from browser"  # one test by name
+npm run benchmark                                 # accuracy scorecard (tests/corpus.ts)
 npm run lint
 npx tsc --noEmit                                  # if it reports stale errors, delete tsconfig.tsbuildinfo
 npm run build
@@ -72,6 +73,8 @@ All changes are `Edit` objects applied bottom-up. `pushEdit` rejects overlapping
 ## Tests
 
 `tests/fixer.test.ts` → "leaves no findings when the fixed project is scanned again" is the main regression guard. Keep it passing when changing rules, masking or fixer output.
+
+**Accuracy benchmark.** `npm run benchmark` grades the scanner on the labelled samples in `tests/corpus.ts` and prints a scorecard (secrets found, false alarms), showing masked values only. The `BASELINE` in `tests/benchmark.test.ts` is a ratchet: when a scanner change lowers the false-alarm count, lower `BASELINE` to match. The count may never go up. To test a new false-positive or detection idea, add a sample there.
 
 For new fixer cases, use the `expectNoLeak` helper in `tests/fixer.test.ts`. It checks that no raw key survives outside `.env` and that a re-scan is clean. `tests/fixer-paths.test.ts` covers the proxy routes (with a syntax check of the generated code), other languages, private keys and the `.env` helpers.
 
