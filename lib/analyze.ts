@@ -1,6 +1,6 @@
 import { buildFix, type FixOutput } from "./fixer";
 import { scanFiles, securityScore } from "./scanner";
-import { MAX_FILES } from "./scanner/walk";
+import { MAX_FILES, MAX_UPLOAD_BYTES, tooLargeMessage } from "./scanner/walk";
 import type { Finding, RawFinding, ScanRequest, ScanResult } from "./types";
 
 export class BadRequest extends Error {}
@@ -23,6 +23,10 @@ export function parseScanRequest(body: unknown): ScanRequest {
     (f): f is { path: string; content: string } =>
       !!f && typeof f.path === "string" && typeof f.content === "string" && f.path.length < 1024,
   );
+  // The browser checks the exact byte size before sending; this is the server's
+  // own guard for hosts without a body limit. Characters approximate bytes here.
+  const total = clean.reduce((n, f) => n + f.path.length + f.content.length, 0);
+  if (total > MAX_UPLOAD_BYTES) throw new BadRequest(tooLargeMessage(total));
   const name = typeof projectName === "string" && projectName.trim() ? projectName.trim().slice(0, 100) : "my-project";
   return { projectName: name, files: clean };
 }

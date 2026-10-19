@@ -3,6 +3,22 @@
 
 export const MAX_FILE_BYTES = 1024 * 1024;
 export const MAX_FILES = 8000;
+/**
+ * Largest scan request the browser may send. Vercel rejects function request
+ * bodies over 4.5 MB, so this leaves room for the JSON wrapper.
+ */
+export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+
+const mb = (bytes: number) => (bytes / 1024 / 1024).toFixed(1);
+
+/** Plain-English error for an upload over MAX_UPLOAD_BYTES. */
+export function tooLargeMessage(bytes?: number): string {
+  const size = bytes ? ` (about ${mb(bytes)} MB of code; the limit is ${mb(MAX_UPLOAD_BYTES)} MB)` : "";
+  return (
+    `This project has too much code to scan in one go${size}. ` +
+    "Zip just your app's source folder and leave out data files, large JSON files, test fixtures and generated code."
+  );
+}
 
 const SKIP_DIRS = new Set([
   "node_modules",

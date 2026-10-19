@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { buildSecuredZip, readDroppedItems, readFileList, readZip, sourceFiles, UploadError, type Project } from "@/lib/client/project";
 import { demoProject } from "@/lib/client/demo";
+import { MAX_UPLOAD_BYTES, tooLargeMessage } from "@/lib/scanner/walk";
 import type { ScanResult, SourceFile } from "@/lib/types";
 import { FixView, type DownloadState } from "./FixView";
 import { ResultsView } from "./ResultsView";
@@ -17,7 +18,12 @@ type Step =
   | { name: "fix" };
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
-  const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const json = JSON.stringify(body);
+  // Check before sending: the host rejects oversized requests with a bare error page.
+  const bytes = new Blob([json]).size;
+  if (bytes > MAX_UPLOAD_BYTES) throw new UploadError(tooLargeMessage(bytes));
+  const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: json });
+  if (res.status === 413) throw new UploadError(tooLargeMessage());
   const data = (await res.json().catch(() => ({}))) as T & { error?: string };
   if (!res.ok) throw new Error(data.error ?? "Something went wrong. Please try again.");
   return data;
