@@ -58,60 +58,96 @@ function syntaxFor(lang: Lang): Syntax {
   }
 }
 
+/** Lexer state just before position `i`. */
+interface LexState {
+  i: number;
+  state: "code" | "line" | "block" | "string";
+  open: number;
+  quote: string;
+  delim: number;
+}
+
+const CHECKPOINT_EVERY = 4096;
+
 /**
- * A small lexer: walks the file from the top and reports whether `offset` is
+ * A small lexer: walks the file from the top and reports whether a position is
  * in code, a comment or a string. It is approximate (no regex literals, no
  * nested template expressions), but single-line strings end at the newline,
  * so a misread quote can never leak past its own line.
+ *
+ * It saves its state every few KB, so asking about many positions in one big
+ * file costs about one pass instead of one pass per position. Create one per
+ * file for the duration of a fix and let it go afterwards.
  */
-export function contextAt(content: string, offset: number, lang: Lang): Context {
-  const syn = syntaxFor(lang);
-  let state: "code" | "line" | "block" | "string" = "code";
-  let open = -1;
-  let quote = "";
-  let delim = 1;
+export class ContextLexer {
+  private readonly syn: Syntax;
+  private readonly checkpoints: LexState[] = [{ i: 0, state: "code", open: -1, quote: "", delim: 1 }];
 
-  for (let i = 0; i < offset; i++) {
-    const c = content[i];
-    if (state === "code") {
-      if (syn.blockComments && content.startsWith("/*", i)) {
-        state = "block";
-        i++;
-      } else if (syn.lineComments.some((m) => content.startsWith(m, i)) && !(c === "#" && syn.hashNeedsSpace && i > 0 && !/\s/.test(content[i - 1]))) {
-        state = "line";
-      } else if (syn.triple && (content.startsWith('"""', i) || content.startsWith("'''", i))) {
-        state = "string";
-        open = i;
-        quote = c;
-        delim = 3;
-        i += 2;
-      } else if (syn.quotes.includes(c)) {
-        state = "string";
-        open = i;
-        quote = c;
-        delim = 1;
-      }
-    } else if (state === "line") {
-      if (c === "\n") state = "code";
-    } else if (state === "block") {
-      if (content.startsWith("*/", i)) {
-        state = "code";
-        i++;
-      }
-    } else {
-      const raw = lang === "go" && quote === "`";
-      if (c === "\\" && !raw) i++;
-      else if (delim === 3 && content.startsWith(quote.repeat(3), i)) {
-        state = "code";
-        i += 2;
-      } else if (delim === 1 && c === quote) state = "code";
-      else if (c === "\n" && delim === 1 && !syn.multiline.includes(quote)) state = "code";
-    }
+  constructor(
+    private readonly content: string,
+    private readonly lang: Lang,
+  ) {
+    this.syn = syntaxFor(lang);
   }
 
-  if (state === "line" || state === "block") return { kind: "comment" };
-  if (state === "string") return { kind: "string", open, quote, delim };
-  return { kind: "code" };
+  at(offset: number): Context {
+    let k = this.checkpoints.length - 1;
+    while (k > 0 && this.checkpoints[k].i > offset) k--;
+    const s = { ...this.checkpoints[k] };
+    this.advance(s, offset);
+    if (s.state === "line" || s.state === "block") return { kind: "comment" };
+    if (s.state === "string") return { kind: "string", open: s.open, quote: s.quote, delim: s.delim };
+    return { kind: "code" };
+  }
+
+  private advance(s: LexState, offset: number): void {
+    const { content, syn, lang, checkpoints } = this;
+    for (; s.i < offset; s.i++) {
+      // Saved at the top of an iteration, so resuming from it replays exactly.
+      if (s.i >= checkpoints[checkpoints.length - 1].i + CHECKPOINT_EVERY) checkpoints.push({ ...s });
+      const i = s.i;
+      const c = content[i];
+      if (s.state === "code") {
+        if (syn.blockComments && content.startsWith("/*", i)) {
+          s.state = "block";
+          s.i++;
+        } else if (syn.lineComments.some((m) => content.startsWith(m, i)) && !(c === "#" && syn.hashNeedsSpace && i > 0 && !/\s/.test(content[i - 1]))) {
+          s.state = "line";
+        } else if (syn.triple && (content.startsWith('"""', i) || content.startsWith("'''", i))) {
+          s.state = "string";
+          s.open = i;
+          s.quote = c;
+          s.delim = 3;
+          s.i += 2;
+        } else if (syn.quotes.includes(c)) {
+          s.state = "string";
+          s.open = i;
+          s.quote = c;
+          s.delim = 1;
+        }
+      } else if (s.state === "line") {
+        if (c === "\n") s.state = "code";
+      } else if (s.state === "block") {
+        if (content.startsWith("*/", i)) {
+          s.state = "code";
+          s.i++;
+        }
+      } else {
+        const raw = lang === "go" && s.quote === "`";
+        if (c === "\\" && !raw) s.i++;
+        else if (s.delim === 3 && content.startsWith(s.quote.repeat(3), i)) {
+          s.state = "code";
+          s.i += 2;
+        } else if (s.delim === 1 && c === s.quote) s.state = "code";
+        else if (c === "\n" && s.delim === 1 && !syn.multiline.includes(s.quote)) s.state = "code";
+      }
+    }
+  }
+}
+
+/** One-off lookup. For many positions in the same file, reuse a ContextLexer. */
+export function contextAt(content: string, offset: number, lang: Lang): Context {
+  return new ContextLexer(content, lang).at(offset);
 }
 
 /** Index of the closing delimiter of the string opened at `open`, or -1. */
@@ -127,9 +163,8 @@ function stringEnd(content: string, open: number, quote: string, delim: number, 
   return -1;
 }
 
-/** The string literal that fully contains [start, end), or null. */
-export function enclosingLiteral(content: string, start: number, end: number, lang: Lang): Literal | null {
-  const ctx = contextAt(content, start, lang);
+/** The string literal that fully contains [start, end), or null. Pass `ctx` when it is already known. */
+export function enclosingLiteral(content: string, start: number, end: number, lang: Lang, ctx = contextAt(content, start, lang)): Literal | null {
   if (ctx.kind !== "string") return null;
   const close = stringEnd(content, ctx.open, ctx.quote, ctx.delim, lang);
   if (close < end) return null; // unterminated, or the "secret" runs past the string

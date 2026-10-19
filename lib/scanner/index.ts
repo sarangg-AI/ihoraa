@@ -142,9 +142,29 @@ function toEnvName(varName: string): string {
   return snake;
 }
 
-function findMatches(file: SourceFile, envFile: boolean): Match[] {
+/**
+ * More possible keys than any real project has; it usually means data files,
+ * logs or generated code. Stopping early also keeps scan and fix fast, since
+ * their work grows with the number of findings.
+ */
+export const MAX_FINDINGS = 200;
+
+export class TooManyFindings extends Error {
+  constructor() {
+    super(
+      `This project has more than ${MAX_FINDINGS} possible keys, which usually means it includes data files, logs or generated code. ` +
+        "Zip just your app's source folder and try again.",
+    );
+  }
+}
+
+function findMatches(file: SourceFile, envFile: boolean, budget: number): Match[] {
   const found: Match[] = [];
   const { content } = file;
+  const add = (m: Match) => {
+    if (found.length >= budget) throw new TooManyFindings();
+    found.push(m);
+  };
 
   for (const rule of RULES) {
     const re = new RegExp(rule.pattern.source, rule.pattern.flags.includes("d") ? rule.pattern.flags : rule.pattern.flags + "d");
@@ -155,7 +175,7 @@ function findMatches(file: SourceFile, envFile: boolean): Match[] {
       if (isPlaceholder(secret)) continue;
       if (rule.validate && !rule.validate(secret)) continue;
       if (overlaps(found, start, end)) continue;
-      found.push({ rule, secret, start, end });
+      add({ rule, secret, start, end });
     }
   }
 
@@ -173,7 +193,7 @@ function findMatches(file: SourceFile, envFile: boolean): Match[] {
       }
       if (!isSecretName(name)) continue;
       if (value.length < 8 || isPlaceholder(value) || isSettingValue(name, value)) continue;
-      found.push({ rule: ENV_FILE_RULE, secret: value, start, end, varName: name });
+      add({ rule: ENV_FILE_RULE, secret: value, start, end, varName: name });
     }
     return found;
   }
@@ -194,13 +214,12 @@ function findMatches(file: SourceFile, envFile: boolean): Match[] {
     if (!isSecretName(name)) continue;
     if (isPlaceholder(value) || !looksRandom(value)) continue;
     if (overlaps(found, start, end)) continue;
-    found.push({ rule: GENERIC_RULE, secret: value, start, end, varName: name });
+    add({ rule: GENERIC_RULE, secret: value, start, end, varName: name });
   }
   return found;
 }
 
-function buildSnippet(maskedContent: string, line: number): SnippetLine[] {
-  const lines = maskedContent.split(/\r?\n/);
+function buildSnippet(lines: string[], line: number): SnippetLine[] {
   const from = Math.max(1, line - 2);
   const to = Math.min(lines.length, line + 2);
   const out: SnippetLine[] = [];
@@ -229,6 +248,7 @@ export function scanFiles(input: SourceFile[]): ScanOutput {
   const envNameBySecret = new Map<string, string>();
   const usedEnvNames = new Map<string, string>(); // envName -> secret
   let linesScanned = 0;
+  let budget = MAX_FINDINGS;
 
   const assignEnvName = (secret: string, wanted: string): string => {
     const existing = envNameBySecret.get(secret);
@@ -248,11 +268,12 @@ export function scanFiles(input: SourceFile[]): ScanOutput {
     const envFile = isEnvFile(file.path);
     const ignoredEnv = envFile && isGitIgnored(gitignore, file.path);
     const baseExposure = classifyExposure(file, framework);
-    const matches = findMatches(file, envFile).sort((a, b) => a.start - b.start);
+    const matches = findMatches(file, envFile, budget).sort((a, b) => a.start - b.start);
+    budget -= matches.length;
     if (matches.length === 0) continue;
 
     const starts = lineIndex(file.content);
-    const masked = maskRanges(file.content, matches);
+    const maskedLines = maskRanges(file.content, matches).split(/\r?\n/);
 
     for (const m of matches) {
       let exposure = baseExposure;
@@ -297,7 +318,7 @@ export function scanFiles(input: SourceFile[]): ScanOutput {
         line,
         column,
         masked: maskSecret(m.secret),
-        snippet: buildSnippet(masked, line),
+        snippet: buildSnippet(maskedLines, line),
         envName,
         publicByDesign: Boolean(rule.publicByDesign),
         rotateUrl: rule.rotateUrl,

@@ -3,6 +3,10 @@ import type { Confidence, Severity } from "../types";
 // Detection rules. Patterns are adapted from the Gitleaks ruleset (MIT licensed)
 // and simplified for readability. Each pattern must be global and either expose
 // a `secret` named group or match the secret as a whole.
+//
+// Speed: a repeated quantifier that has to be followed by something else (like
+// `{20,}T3BlbkFJ`) needs an upper bound. Without one, a crafted file can make
+// every start position re-scan the rest of the file. tests/speed.test.ts guards this.
 
 export interface Rule {
   id: string;
@@ -47,7 +51,7 @@ export const RULES: Rule[] = [
     id: "openai-api-key",
     provider: "OpenAI",
     title: "OpenAI API key",
-    pattern: /\bsk-(?!ant-)(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{20,}T3BlbkFJ[A-Za-z0-9_-]{20,}|\bsk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{40,}/g,
+    pattern: /\bsk-(?!ant-)(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{20,250}T3BlbkFJ[A-Za-z0-9_-]{20,250}|\bsk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{40,}/g,
     severity: "critical",
     whatItCanDo: "Anyone with this key can run AI requests billed to your OpenAI account.",
     envName: "OPENAI_API_KEY",
@@ -107,7 +111,7 @@ export const RULES: Rule[] = [
     id: "supabase-service-role",
     provider: "Supabase",
     title: "Supabase service-role key",
-    pattern: /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g,
+    pattern: /\beyJ[A-Za-z0-9_-]{10,100}\.eyJ[A-Za-z0-9_-]{10,1500}\.[A-Za-z0-9_-]{10,}/g,
     severity: "critical",
     whatItCanDo: "This key bypasses all database security rules. Anyone can read, change or delete every row.",
     envName: "SUPABASE_SERVICE_ROLE_KEY",
@@ -210,7 +214,8 @@ export const RULES: Rule[] = [
     id: "private-key",
     provider: "Private key",
     title: "Private key block",
-    pattern: /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----[\s\S]{20,}?-----END (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g,
+    // The body stops at the next BEGIN, so a file of BEGIN lines with no END stays fast.
+    pattern: /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----(?:(?!-----BEGIN )[\s\S]){20,20000}?-----END (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g,
     severity: "critical",
     whatItCanDo: "A private key proves identity. Anyone with it can impersonate your server, app or account.",
     envName: "PRIVATE_KEY",

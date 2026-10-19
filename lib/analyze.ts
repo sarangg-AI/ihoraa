@@ -1,5 +1,5 @@
 import { buildFix, type FixOutput } from "./fixer";
-import { scanFiles, securityScore } from "./scanner";
+import { scanFiles, securityScore, TooManyFindings } from "./scanner";
 import { MAX_FILES, MAX_UPLOAD_BYTES, tooLargeMessage } from "./scanner/walk";
 import type { Finding, RawFinding, ScanRequest, ScanResult } from "./types";
 
@@ -31,8 +31,17 @@ export function parseScanRequest(body: unknown): ScanRequest {
   return { projectName: name, files: clean };
 }
 
+function scanOrReject(files: ScanRequest["files"]) {
+  try {
+    return scanFiles(files);
+  } catch (err) {
+    if (err instanceof TooManyFindings) throw new BadRequest(err.message);
+    throw err;
+  }
+}
+
 export function analyze(req: ScanRequest): { result: ScanResult; fix: FixOutput } {
-  const scan = scanFiles(req.files);
+  const scan = scanOrReject(req.files);
   const fix = buildFix(scan, req.projectName);
   const result: ScanResult = {
     projectName: req.projectName,

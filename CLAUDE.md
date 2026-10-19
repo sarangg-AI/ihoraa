@@ -40,6 +40,8 @@ There is no server-side store, so scan and fix must stay deterministic for the s
 
 **Limits.**
 - Uploads are capped at `MAX_UPLOAD_BYTES` (4 MB, `lib/scanner/walk.ts`), because Vercel rejects request bodies over 4.5 MB. The browser checks this before sending and the server checks it again.
+- More than `MAX_FINDINGS` (200) matches in one project throws `TooManyFindings`, which becomes a plain-English 400. Real projects stay far below it, and it caps work that grows with the number of findings.
+- **Speed.** `tests/speed.test.ts` runs crafted 1 MB files through scan and fix, each within a time budget. When a regex quantifier must be followed by more pattern (e.g. `{20,}T3BlbkFJ`), give it an upper bound, or a crafted file can trigger quadratic backtracking. The fixer uses one `ContextLexer` per file (`literal.ts`). It keeps checkpoints, so do not call `contextAt` in a loop over findings.
 - Both API routes call `rateLimited` (`lib/ratelimit.ts`): 30 requests per IP per 10 minutes. Counts are kept in memory for each server instance, so this is a best-effort limit, not a hard one.
 
 **Privacy page.** `app/privacy/page.tsx` describes this flow in plain English. Update it whenever upload, storage, logging or rate-limit behaviour changes.

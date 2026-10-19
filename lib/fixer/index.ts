@@ -4,7 +4,7 @@ import { basename, isEnvFile, isPublicEnvName } from "../scanner/exposure";
 import { buildChange } from "./diff";
 import { parseEnv, updateDotEnv, updateEnvExample, updateGitignore } from "./envfiles";
 import { envExpression, isDocFile, languageOf, lineComment, publicPrefix, type Lang } from "./language";
-import { applyEdits, contextAt, editsOverlap, enclosingLiteral, rewriteLiteral, type Edit, type Literal, type Replacement } from "./literal";
+import { applyEdits, ContextLexer, editsOverlap, enclosingLiteral, rewriteLiteral, type Edit, type Literal, type Replacement } from "./literal";
 import { PROXY_PROVIDERS, proxyRoute, proxySource } from "./proxy";
 import { buildReport } from "./report";
 
@@ -94,6 +94,13 @@ export function buildFix(scan: ScanOutput, projectName: string): FixOutput {
   const literalJobs = new Map<string, { path: string; lang: Lang; lit: Literal; replacements: Replacement[] }>();
   // Browser-safe keys we deliberately leave in place, keyed by file + secret.
   const leftInPlace = new Set<string>();
+  // One lexer per file, so many findings in a big file don't each re-read it from the top.
+  const lexers = new Map<string, ContextLexer>();
+  const lexerFor = (file: SourceFile, lang: Lang): ContextLexer => {
+    let lexer = lexers.get(file.path);
+    if (!lexer) lexers.set(file.path, (lexer = new ContextLexer(file.content, lang)));
+    return lexer;
+  };
 
   for (const f of findings) {
     const file = byPath.get(f.file)!;
@@ -118,7 +125,7 @@ export function buildFix(scan: ScanOutput, projectName: string): FixOutput {
     }
 
     // 2. Keys in comments and docs: redact them. There is no code to rewire.
-    const ctx = contextAt(file.content, f.start, lang);
+    const ctx = lexerFor(file, lang).at(f.start);
     const inDocs = isDocFile(f.file);
     if (inDocs || ctx.kind === "comment") {
       pushEdit(f.file, { start: f.start, end: f.end, text: placeholderFor(f.envName) });
@@ -200,7 +207,7 @@ export function buildFix(scan: ScanOutput, projectName: string): FixOutput {
 
     let planned = false;
     if (canRead && ctx.kind === "string") {
-      const lit = enclosingLiteral(file.content, f.start, f.end, lang);
+      const lit = enclosingLiteral(file.content, f.start, f.end, lang, ctx);
       if (lit) {
         const key = `${f.file}\u0000${lit.start}`;
         const job = literalJobs.get(key) ?? { path: f.file, lang, lit, replacements: [] };
