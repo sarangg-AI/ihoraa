@@ -1,10 +1,10 @@
 import type { FileChange, FixPlan, ManualStep, RawFinding, Rotation, SourceFile } from "../types";
 import type { ScanOutput } from "../scanner";
-import { isEnvFile, isPublicEnvName } from "../scanner/exposure";
+import { basename, isEnvFile, isPublicEnvName } from "../scanner/exposure";
 import { buildChange } from "./diff";
 import { parseEnv, updateDotEnv, updateEnvExample, updateGitignore } from "./envfiles";
-import { envExpression, languageOf, lineComment, publicPrefix, type Lang } from "./language";
-import { applyEdits, editsOverlap, replaceWithExpression, type Edit } from "./literal";
+import { envExpression, isDocFile, languageOf, lineComment, publicPrefix, type Lang } from "./language";
+import { applyEdits, contextAt, editsOverlap, enclosingLiteral, rewriteLiteral, type Edit, type Literal, type Replacement } from "./literal";
 import { PROXY_PROVIDERS, proxyRoute, proxySource } from "./proxy";
 import { buildReport } from "./report";
 
@@ -19,6 +19,26 @@ export interface FixOutput {
 }
 
 const WORKFLOW = /^\.github\/workflows\//;
+const COMPOSE = /^(docker-)?compose(\.[\w-]+)?\.ya?ml$/i;
+
+/** GitHub rejects secret names that start with GITHUB_ or a digit. */
+function githubSecretName(name: string): string {
+  const renamed = name.replace(/^GITHUB_/, "GH_");
+  return /^\d/.test(renamed) ? `_${renamed}` : renamed;
+}
+
+const placeholderFor = (envName: string) => `IHORAA_MOVED_TO_ENV_${envName}`;
+
+function loadStep(f: RawFinding): ManualStep {
+  const placeholder = placeholderFor(f.envName);
+  return {
+    id: `manual-${f.id}`,
+    title: `Load ${f.envName} in ${f.file}`,
+    file: f.file,
+    detail: `Ihoraa replaced the key with ${placeholder}. Change this file so it reads the value from the ${f.envName} environment variable.`,
+    aiPrompt: `In ${f.file}, replace ${placeholder} with code that reads the ${f.envName} environment variable at runtime. Do not paste the real key into the file.`,
+  };
+}
 
 function addPythonImport(content: string): string {
   if (/^\s*import\s+os\b|^\s*import\s+[\w ,]*\bos\b|^\s*from\s+os\s+import/m.test(content)) return content;
@@ -70,6 +90,10 @@ export function buildFix(scan: ScanOutput, projectName: string): FixOutput {
     return true;
   };
   const todoLines = new Map<string, Set<number>>();
+  // Secrets in the same string literal are rewritten together in one edit.
+  const literalJobs = new Map<string, { path: string; lang: Lang; lit: Literal; replacements: Replacement[] }>();
+  // Browser-safe keys we deliberately leave in place, keyed by file + secret.
+  const leftInPlace = new Set<string>();
 
   for (const f of findings) {
     const file = byPath.get(f.file)!;
@@ -93,9 +117,19 @@ export function buildFix(scan: ScanOutput, projectName: string): FixOutput {
       continue;
     }
 
+    // 2. Keys in comments and docs: redact them. There is no code to rewire.
+    const ctx = contextAt(file.content, f.start, lang);
+    const inDocs = isDocFile(f.file);
+    if (inDocs || ctx.kind === "comment") {
+      pushEdit(f.file, { start: f.start, end: f.end, text: placeholderFor(f.envName) });
+      envVars.set(f.envName, f.secret);
+      f.fixSummary = `Removed from ${inDocs ? "documentation" : "a code comment"}. The value is saved in .env as ${f.envName}.`;
+      continue;
+    }
+
     const isFrontendSecret = f.exposure === "frontend" && !f.publicByDesign;
 
-    // 2. Secret keys in browser code: remove them. They cannot be hidden there.
+    // 3. Secret keys in browser code: remove them. They cannot be hidden there.
     if (isFrontendSecret) {
       pushEdit(f.file, { start: f.start, end: f.end, text: MOVED_TO_SERVER });
       envVars.set(f.envName, f.secret);
@@ -144,24 +178,44 @@ export function buildFix(scan: ScanOutput, projectName: string): FixOutput {
       continue;
     }
 
-    // 3. Everything else: swap the literal for an env lookup.
+    // 4. Everything else: swap the literal for an env lookup.
     let envName = f.envName;
     if (f.exposure === "frontend" && f.publicByDesign) {
       const prefix = publicPrefix(framework);
       if (prefix && !envName.startsWith(prefix)) envName = prefix + envName;
     }
 
-    let expr = envExpression(lang, envName, { exposure: f.exposure, framework });
-    if (lang === "yaml" && WORKFLOW.test(f.file)) expr = `\${{ secrets.${envName} }}`;
-    const canRead = expr && !(f.exposure === "frontend" && f.publicByDesign && !publicPrefix(framework));
-    const edit = canRead ? replaceWithExpression(file.content, f, expr!, lang, f.file) : null;
+    // YAML can only read variables in GitHub Actions and docker-compose files.
+    const workflow = lang === "yaml" && WORKFLOW.test(f.file);
+    let expr: string | null;
+    if (workflow) {
+      envName = githubSecretName(envName);
+      expr = `\${{ secrets.${envName} }}`;
+    } else if (lang === "yaml") {
+      expr = COMPOSE.test(basename(f.file)) ? `\${${envName}}` : null;
+    } else {
+      expr = envExpression(lang, envName, { exposure: f.exposure, framework });
+    }
+    const canRead = expr !== null && !(f.exposure === "frontend" && f.publicByDesign && !publicPrefix(framework));
 
-    if (edit && pushEdit(f.file, edit)) {
-      if (lang === "py") needsPythonOs.add(f.file);
-      if (!WORKFLOW.test(f.file)) envVars.set(envName, f.secret);
+    let planned = false;
+    if (canRead && ctx.kind === "string") {
+      const lit = enclosingLiteral(file.content, f.start, f.end, lang);
+      if (lit) {
+        const key = `${f.file}\u0000${lit.start}`;
+        const job = literalJobs.get(key) ?? { path: f.file, lang, lit, replacements: [] };
+        job.replacements.push({ start: f.start, end: f.end, expr: expr! });
+        literalJobs.set(key, job);
+        planned = true;
+      }
+    } else if (canRead && ctx.kind === "code" && lang === "yaml") {
+      // Unquoted YAML value, e.g. `GH_TOKEN: ghp_...`.
+      planned = pushEdit(f.file, { start: f.start, end: f.end, text: expr! });
+    }
+
+    if (planned) {
       f.envName = envName;
-      f.fixSummary = `Moved to .env as ${envName}. The code now reads it from there.`;
-      if (WORKFLOW.test(f.file)) {
+      if (workflow) {
         f.fixSummary = `Replaced with the GitHub secret ${envName}.`;
         manual.push({
           id: `gh-secret-${f.id}`,
@@ -169,35 +223,51 @@ export function buildFix(scan: ScanOutput, projectName: string): FixOutput {
           file: f.file,
           detail: `In GitHub, open your repository → Settings → Secrets and variables → Actions → New repository secret, and add ${envName} with a newly rotated key.`,
         });
+      } else {
+        envVars.set(envName, f.secret);
+        f.fixSummary = `Moved to .env as ${envName}. The code now reads it from there.`;
       }
       continue;
     }
 
     if (f.exposure === "frontend" && f.publicByDesign) {
+      leftInPlace.add(`${f.file}\u0000${f.secret}`);
       f.fixSummary = "Left in place: this key type is meant to be public. Lock it to your domain instead.";
       continue;
     }
 
     // No safe automatic rewrite: redact it and explain.
-    const placeholder = `IHORAA_MOVED_TO_ENV_${f.envName}`;
-    pushEdit(f.file, { start: f.start, end: f.end, text: placeholder });
+    pushEdit(f.file, { start: f.start, end: f.end, text: placeholderFor(f.envName) });
     envVars.set(f.envName, f.secret);
     f.fixSummary = `Removed and saved to .env as ${f.envName}. This file can't read .env by itself, so it needs one manual step.`;
-    manual.push({
-      id: `manual-${f.id}`,
-      title: `Load ${f.envName} in ${f.file}`,
-      file: f.file,
-      detail: `Ihoraa replaced the key with ${placeholder}. Change this file so it reads the value from the ${f.envName} environment variable.`,
-      aiPrompt: `In ${f.file}, replace ${placeholder} with code that reads the ${f.envName} environment variable at runtime. Do not paste the real key into the file.`,
-    });
+    manual.push(loadStep(f));
+  }
+
+  for (const job of literalJobs.values()) {
+    const edit = rewriteLiteral(byPath.get(job.path)!.content, job.lit, job.replacements, job.lang, job.path);
+    if (pushEdit(job.path, edit) && job.lang === "py") needsPythonOs.add(job.path);
   }
 
   // Build the new file contents.
   const changed = new Map<string, string>();
-  for (const [path, list] of edits) {
-    let content = applyEdits(byPath.get(path)!.content, list);
+  const touched = new Set([...edits.keys(), ...findings.filter((f) => !isEnvFile(f.file)).map((f) => f.file)]);
+  for (const path of touched) {
+    const original = byPath.get(path)!.content;
+    let content = applyEdits(original, edits.get(path) ?? []);
+
+    // Safety net: if any edit was dropped (e.g. two rewrites overlapped), the
+    // raw key must still never survive outside .env.
+    for (const f of findings) {
+      if (f.file !== path || isEnvFile(f.file) || leftInPlace.has(`${path}\u0000${f.secret}`)) continue;
+      if (!content.includes(f.secret)) continue;
+      content = content.split(f.secret).join(placeholderFor(f.envName));
+      envVars.set(f.envName, f.secret);
+      f.fixSummary = `Removed and saved to .env as ${f.envName}. This spot couldn't be rewritten automatically, so it needs one manual step.`;
+      manual.push(loadStep(f));
+    }
+
     if (needsPythonOs.has(path)) content = addPythonImport(content);
-    changed.set(path, content);
+    if (content !== original) changed.set(path, content);
   }
 
   const envPaths = files.filter((f) => isEnvFile(f.path)).map((f) => f.path);

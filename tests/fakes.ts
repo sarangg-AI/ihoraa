@@ -29,4 +29,16 @@ export const fake = {
     [b64url({ alg: "HS256", typ: "JWT" }), b64url({ iss: "supabase", role: "anon", ref: randomChars(12) }), randomChars(43)].join("."),
   dbUrl: () => "postgres" + "ql://admin:" + randomChars(18) + "@db." + randomChars(10).toLowerCase() + ".supabase.co:5432/postgres",
   generic: () => randomChars(32),
+  stripeTest: () => ["sk", "test", randomChars(40)].join("_"),
+  awsSecret: () => randomChars(40, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789/+"),
+  supabaseSecret: () => ["sb", "secret", randomChars(32)].join("_"),
+  slack: () => "xo" + "xb-" + randomChars(12, "0123456789") + "-" + randomChars(24),
+  sendgrid: () => "S" + "G." + randomChars(22) + "." + randomChars(43),
+  twilio: () => "S" + "K" + randomChars(32, "0123456789abcdef"),
+  mailgun: () => "ke" + "y-" + randomChars(32),
+  huggingface: () => "h" + "f_" + randomChars(34),
+  groq: () => "gs" + "k_" + randomChars(52),
+  replicate: () => "r" + "8_" + randomChars(37),
+  privateKey: () =>
+    ["-----BEGIN PRIVATE KEY-----", "MIIEvQ" + randomChars(48), randomChars(48), "-----END PRIVATE KEY-----"].join("\n"),
 };

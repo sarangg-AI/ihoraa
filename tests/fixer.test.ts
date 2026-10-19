@@ -18,6 +18,19 @@ function rescan(files: SourceFile[]) {
   return analyze({ projectName: "demo", files: [...out].map(([path, content]) => ({ path, content })) }).result;
 }
 
+/** Every raw secret must be gone from every output file except .env. */
+function expectNoLeak(files: SourceFile[]) {
+  const { fix, out } = run(files);
+  for (const secret of new Set(fix.findings.map((f) => f.secret))) {
+    for (const [path, content] of out) {
+      if (path === ".env") continue;
+      expect(content.includes(secret), `${path} still contains a raw secret`).toBe(false);
+    }
+  }
+  expect(rescan(files).findings).toEqual([]);
+  return { ...run(files) };
+}
+
 const rewrite = (code: string, secret: string, lang: "js" | "ts" | "py", path: string, expr: string) => {
   const start = code.indexOf(secret);
   const edit = replaceWithExpression(code, { start, end: start + secret.length }, expr, lang, path)!;
@@ -121,5 +134,96 @@ describe("buildFix", () => {
     const second = rescan(files);
     expect(second.findings).toEqual([]);
     expect(second.score).toBe(100);
+  });
+});
+
+describe("regressions", () => {
+  describe("several keys in one string", () => {
+    it("rewrites both keys in a JS string", () => {
+      const o = fake.openai();
+      const s = fake.stripeLive();
+      const { out, result } = expectNoLeak([{ path: "server/a.js", content: `const both = "${o} ${s}";\n` }]);
+      expect(out.get("server/a.js")).toBe('const both = process.env.OPENAI_API_KEY + " " + process.env.STRIPE_SECRET_KEY;\n');
+      expect(result.plan.manualSteps.map((m) => m.title)).not.toContain("Load STRIPE_SECRET_KEY in server/a.js");
+    });
+
+    it("rewrites both keys in a template literal and a Python string", () => {
+      const o = fake.openai();
+      const s = fake.stripeLive();
+      const js = expectNoLeak([{ path: "server/t.js", content: "const both = `" + o + ":" + s + "`;\n" }]).out;
+      expect(js.get("server/t.js")).toBe("const both = `${process.env.OPENAI_API_KEY}:${process.env.STRIPE_SECRET_KEY}`;\n");
+      const py = expectNoLeak([{ path: "app.py", content: `CREDS = "${o}:${s}"\n` }]).out;
+      expect(py.get("app.py")).toBe('import os\nCREDS = os.environ["OPENAI_API_KEY"] + ":" + os.environ["STRIPE_SECRET_KEY"]\n');
+    });
+
+    it("removes a secret and a browser-safe key sharing one string in browser code", () => {
+      expectNoLeak([
+        { path: "package.json", content: '{"dependencies":{"next":"16"}}' },
+        { path: "components/X.tsx", content: `"use client";\nconst cfg = "${fake.google()}|${fake.openai()}";\n` },
+      ]);
+    });
+  });
+
+  describe("keys in comments and docs", () => {
+    it("redacts a key in a comment between two template literals without inventing code", () => {
+      const o = fake.openai();
+      const { out, result } = expectNoLeak([
+        { path: "server/c.js", content: "const a = `top`;\n// old key: " + o + "\nconst b = `bottom`;\n" },
+      ]);
+      expect(out.get("server/c.js")).toBe("const a = `top`;\n// old key: IHORAA_MOVED_TO_ENV_OPENAI_API_KEY\nconst b = `bottom`;\n");
+      expect(result.findings[0].fixSummary).toMatch(/comment/i);
+      expect(result.plan.manualSteps.some((m) => m.file === "server/c.js")).toBe(false);
+    });
+
+    it("redacts a quoted key inside a // or # comment", () => {
+      const o = fake.openai();
+      const { out } = expectNoLeak([
+        { path: "server/d.ts", content: `// const key = "${o}";\nexport const x = 1;\n` },
+        { path: "tool.py", content: `# api_key = "${o}"\nprint(1)\n` },
+      ]);
+      expect(out.get("server/d.ts")).toBe('// const key = "IHORAA_MOVED_TO_ENV_OPENAI_API_KEY";\nexport const x = 1;\n');
+      expect(out.get("tool.py")).toBe('# api_key = "IHORAA_MOVED_TO_ENV_OPENAI_API_KEY"\nprint(1)\n');
+    });
+
+    it("does not mistake a URL for a comment", () => {
+      const s = fake.stripeLive();
+      const { out } = expectNoLeak([{ path: "server/u.js", content: `fetch("https://api.x.com/v1?key=${s}");\n` }]);
+      expect(out.get("server/u.js")).toBe('fetch("https://api.x.com/v1?key=" + process.env.STRIPE_SECRET_KEY);\n');
+    });
+
+    it("rewrites a key inside a multi-line template literal", () => {
+      const o = fake.openai();
+      const { out } = expectNoLeak([{ path: "server/m.js", content: "const t = `\n  Bearer " + o + "\n`;\n" }]);
+      expect(out.get("server/m.js")).toBe("const t = `\n  Bearer ${process.env.OPENAI_API_KEY}\n`;\n");
+    });
+
+    it("redacts keys in Markdown docs with no manual step", () => {
+      const { out, result } = expectNoLeak([{ path: "README.md", content: `Use key ${fake.anthropic()} to test.\n` }]);
+      expect(out.get("README.md")).toBe("Use key IHORAA_MOVED_TO_ENV_ANTHROPIC_API_KEY to test.\n");
+      expect(result.plan.manualSteps.some((m) => m.file === "README.md")).toBe(false);
+    });
+  });
+
+  describe("unquoted YAML values", () => {
+    it("uses a GitHub secret in workflows, with a name GitHub allows", () => {
+      const { out, result } = expectNoLeak([{ path: ".github/workflows/ci.yml", content: `env:\n  GH_TOKEN: ${fake.github()}\n` }]);
+      expect(out.get(".github/workflows/ci.yml")).toBe("env:\n  GH_TOKEN: ${{ secrets.GH_TOKEN }}\n");
+      expect(result.plan.manualSteps.map((m) => m.title)).toContain("Add GH_TOKEN to your GitHub repository secrets");
+      // GitHub Actions can't read .env, so the key must not be written there.
+      expect(out.get(".env") ?? "").not.toContain("GH_TOKEN");
+    });
+
+    it("uses ${VAR} in docker-compose files", () => {
+      const s = fake.stripeLive();
+      const { out } = expectNoLeak([{ path: "docker-compose.yml", content: `services:\n  api:\n    environment:\n      STRIPE_KEY: ${s}\n` }]);
+      expect(out.get("docker-compose.yml")).toContain("STRIPE_KEY: ${STRIPE_SECRET_KEY}");
+      expect(out.get(".env")).toContain(`STRIPE_SECRET_KEY=${s}`);
+    });
+
+    it("falls back to a placeholder for other YAML files", () => {
+      const { out, result } = expectNoLeak([{ path: "config/app.yaml", content: `openai_key: ${fake.openai()}\n` }]);
+      expect(out.get("config/app.yaml")).toBe("openai_key: IHORAA_MOVED_TO_ENV_OPENAI_API_KEY\n");
+      expect(result.plan.manualSteps.map((m) => m.title)).toContain("Load OPENAI_API_KEY in config/app.yaml");
+    });
   });
 });

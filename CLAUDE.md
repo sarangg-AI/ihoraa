@@ -54,10 +54,15 @@ A test asserts that the serialized result never contains the raw key.
 
 **Fixer (`lib/fixer/index.ts`)** picks one strategy per finding:
 - **`.env` findings:** no code edit; `.gitignore` is updated.
+- **Keys in comments or docs** (`.md`, `.txt`…): redacted to `IHORAA_MOVED_TO_ENV_<NAME>`, with no manual step.
 - **Secret key in browser code:** replaced with `IHORAA_KEY_MOVED_TO_SERVER`, plus a TODO comment, a manual step with an AI-tool prompt, and, for providers in `PROXY_PROVIDERS` (`proxy.ts`), a generated proxy route. Proxies are limited on purpose to AI APIs with an endpoint allow-list.
-- **Everything else:** `replaceWithExpression` (`literal.ts`) swaps the enclosing string literal for a per-language env lookup (`language.ts`). Browser-safe keys get a framework public prefix. If no safe rewrite exists, the value becomes `IHORAA_MOVED_TO_ENV_<NAME>` and a manual step is added.
+- **Everything else:** `rewriteLiteral` (`literal.ts`) swaps the enclosing string literal for a per-language env lookup (`language.ts`). Every key in the same literal is rewritten in one edit. Browser-safe keys get a framework public prefix.
+- **YAML** can only read variables in GitHub Actions (`${{ secrets.X }}`, never `GITHUB_*` names) and docker-compose (`${X}`). Both quoted and unquoted values are handled.
+- **No safe rewrite:** the value becomes `IHORAA_MOVED_TO_ENV_<NAME>` and a manual step is added.
 
-All changes are `Edit` objects applied bottom-up. `pushEdit` rejects overlapping edits.
+`contextAt` in `literal.ts` is a small per-language lexer that tells code, strings and comments apart. Use it instead of searching for nearby quotes.
+
+All changes are `Edit` objects applied bottom-up. `pushEdit` rejects overlapping edits. A final safety net then replaces any raw key still left in an output file, so nothing leaks even when an edit is dropped.
 
 **UI.** `app/page.tsx` renders one client component, `components/IhoraaApp.tsx`, a step state machine (upload → scanning → results → fix). There are no `/results` or `/fix` routes.
 - Styling is Tailwind v4, dark-only.
@@ -67,5 +72,7 @@ All changes are `Edit` objects applied bottom-up. `pushEdit` rejects overlapping
 ## Tests
 
 `tests/fixer.test.ts` → "leaves no findings when the fixed project is scanned again" is the main regression guard. Keep it passing when changing rules, masking or fixer output.
+
+For new fixer cases, use the `expectNoLeak` helper in `tests/fixer.test.ts`. It checks that no raw key survives outside `.env` and that a re-scan is clean. `tests/fixer-paths.test.ts` covers the proxy routes (with a syntax check of the generated code), other languages, private keys and the `.env` helpers.
 
 Fake keys in `tests/fakes.ts` and `lib/client/demo.ts` are built by concatenation at runtime. Never write realistic key literals into the repo: GitHub push protection would block the push.

@@ -26,6 +26,11 @@ export function publicPrefix(framework: Framework): string | null {
   return null;
 }
 
+/** Documentation files: keys there are redacted, never rewired. */
+export function isDocFile(path: string): boolean {
+  return /\.(md|mdx|markdown|txt|rst|adoc)$/i.test(path);
+}
+
 /**
  * Code that reads an env variable in the given language. Returns null when the
  * file has no standard way to read env variables (JSON, Markdown, plain HTML…).
@@ -52,9 +57,9 @@ export function envExpression(lang: Lang, name: string, opts: { exposure: Exposu
       return `Environment.GetEnvironmentVariable("${name}")`;
     case "rs":
       return `std::env::var("${name}").unwrap()`;
-    case "yaml":
-      return `\${${name}}`;
     default:
+      // YAML is handled by the fixer: only docker-compose and GitHub Actions
+      // files can read variables, each with its own syntax.
       return null;
   }
 }

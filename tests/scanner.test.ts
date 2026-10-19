@@ -17,6 +17,15 @@ describe("provider rules", () => {
     ["github-token", fake.github],
     ["supabase-service-role", fake.supabaseService],
     ["database-url", fake.dbUrl],
+    ["stripe-test-key", fake.stripeTest],
+    ["supabase-secret-key", fake.supabaseSecret],
+    ["slack-token", fake.slack],
+    ["sendgrid-api-key", fake.sendgrid],
+    ["twilio-api-key", fake.twilio],
+    ["mailgun-api-key", fake.mailgun],
+    ["huggingface-token", fake.huggingface],
+    ["groq-api-key", fake.groq],
+    ["replicate-api-token", fake.replicate],
   ];
 
   for (const [ruleId, make] of cases) {
@@ -52,6 +61,35 @@ describe("provider rules", () => {
 
   it("ignores a localhost database URL", () => {
     expect(scanOne("server/db.js", 'const url = "postgres://postgres:postgres@localhost:5432/app";')).toHaveLength(0);
+  });
+
+  it("detects an AWS secret key only next to an AWS-style name", () => {
+    const secret = fake.awsSecret();
+    const quoted = scanOne("server/s3.js", `const aws_secret_access_key = "${secret}";`);
+    expect(quoted.map((f) => f.ruleId)).toEqual(["aws-secret-access-key"]);
+    expect(quoted[0].secret).toBe(secret);
+    const env = scanOne(".env", `AWS_SECRET_ACCESS_KEY=${secret}\n`);
+    expect(env.map((f) => f.ruleId)).toEqual(["aws-secret-access-key"]);
+    expect(scanOne("server/s3.js", `const checksum = "${secret}";`).some((f) => f.ruleId === "aws-secret-access-key")).toBe(false);
+  });
+
+  it("rates Stripe test keys lower than live keys", () => {
+    expect(scanOne("server/a.js", `k("${fake.stripeTest()}")`)[0].severity).toBe("medium");
+    expect(scanOne("server/a.js", `k("${fake.stripeLive()}")`)[0].severity).toBe("critical");
+  });
+
+  it("does not flag look-alikes of the loose patterns", () => {
+    const content = [
+      // "key-" inside a longer word is not a Mailgun key.
+      `const id = "monkey-${"a1".repeat(16)}";`,
+      // One hex digit short of a Twilio key.
+      `const sku = "${"S" + "K" + "ab12".repeat(7) + "abc"}";`,
+      // Supabase publishable keys are meant for browsers.
+      `const pub = "sb_publishable_${"x9".repeat(16)}";`,
+      // A Slack-looking prefix with too little after it.
+      'const s = "xoxb-123";',
+    ].join("\n");
+    expect(scanOne("server/look.js", content)).toEqual([]);
   });
 });
 
