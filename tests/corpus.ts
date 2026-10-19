@@ -60,6 +60,7 @@ function secretCases(): CorpusCase[] {
   const numericPassword = randomChars(8, "0123456789");
   const weakJwt = "super" + "secret";
   const latestSecret = fake.generic();
+  const markerAboveSecret = fake.generic();
 
   return [
     leak("provider key", "OpenAI key in a browser component", [
@@ -126,6 +127,9 @@ function secretCases(): CorpusCase[] {
     leak("tests and docs", "Generic secret in a file named like a test", [
       file("server/latest-prices.js", `const pricingApiSecret = "${latestSecret}";`),
     ], [latestSecret]),
+    leak("tests and docs", "Not-a-secret marker on a different line", [
+      file("server/billing.js", "// ihoraa-ignore", `const billingSecret = "${markerAboveSecret}";`),
+    ], [markerAboveSecret]),
     leak("tests and docs", "Real key pasted into the README", [
       file("README.md", "## Setup", "", `Set \`ANTHROPIC_API_KEY=${readmeKey}\` and run \`npm run dev\`.`),
     ], [readmeKey]),
@@ -216,6 +220,9 @@ function cleanCases(): CorpusCase[] {
     clean("tests and docs", "Generic values in test mocks", [
       file("tests/auth.test.ts", `const mockToken = "${randomChars(32)}";`, `const fakeApiKey = "${randomChars(40)}";`, `const token = "${jwtSample}";`),
       file("__mocks__/stripe.js", `export const secretKey = "${randomChars(32)}";`),
+    ]),
+    clean("tests and docs", "Values marked as not secret", [
+      file("lib/demo.ts", `const demoToken = "${randomChars(32)}"; // ihoraa-ignore`, `const sampleApiKey = "${randomChars(40)}"; // gitleaks:allow`),
     ]),
     clean("tests and docs", "Placeholders in setup docs", [
       file(

@@ -40,6 +40,7 @@ export function analyze(req: ScanRequest): { result: ScanResult; fix: FixOutput 
     stats: { filesScanned: scan.files.length, linesScanned: scan.linesScanned },
     score: securityScore(scan.findings),
     findings: fix.findings.map(toPublic),
+    ignored: scan.ignored,
     plan: fix.plan,
   };
   return { result, fix };

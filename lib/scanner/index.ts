@@ -1,4 +1,4 @@
-import type { Exposure, Framework, RawFinding, Severity, SnippetLine, SourceFile } from "../types";
+import type { Exposure, Framework, IgnoredFinding, RawFinding, Severity, SnippetLine, SourceFile } from "../types";
 import { isPlaceholder, looksRandom } from "./entropy";
 import { basename, classifyExposure, detectFramework, isEnvFile, isPublicEnvName, isTestOrExample } from "./exposure";
 import { maskRanges, maskSecret } from "./mask";
@@ -9,6 +9,7 @@ export interface ScanOutput {
   framework: Framework;
   files: SourceFile[];
   findings: RawFinding[];
+  ignored: IgnoredFinding[];
   linesScanned: number;
 }
 
@@ -76,6 +77,16 @@ function isSettingValue(name: string, value: string): boolean {
 function isSecretName(name: string): boolean {
   if (!SECRET_NAME.test(name) || NOT_SECRET_NAME.test(name)) return false;
   return !HASH_OR_ID_NAME.test(name) && !CAMEL_ID_NAME.test(name);
+}
+
+// A developer's "I checked, this is not a secret" marker, on any line the match
+// touches. `gitleaks:allow` is the same marker used by the Gitleaks scanner.
+const NOT_SECRET_MARKER = /\bihoraa-ignore\b|\bgitleaks:allow\b/;
+
+function isMarkedNotSecret(content: string, start: number, end: number): boolean {
+  const lineStart = content.lastIndexOf("\n", start - 1) + 1;
+  const lineEnd = content.indexOf("\n", end);
+  return NOT_SECRET_MARKER.test(content.slice(lineStart, lineEnd === -1 ? content.length : lineEnd));
 }
 
 function lineIndex(content: string): number[] {
@@ -213,6 +224,7 @@ export function scanFiles(input: SourceFile[]): ScanOutput {
   const gitignore = files.find((f) => f.path === ".gitignore")?.content;
 
   const findings: RawFinding[] = [];
+  const ignored: IgnoredFinding[] = [];
   const envNameBySecret = new Map<string, string>();
   const usedEnvNames = new Map<string, string>(); // envName -> secret
   let linesScanned = 0;
@@ -259,6 +271,10 @@ export function scanFiles(input: SourceFile[]): ScanOutput {
       }
 
       const { line, column } = position(starts, m.start);
+      if (isMarkedNotSecret(file.content, m.start, m.end)) {
+        ignored.push({ file: file.path, line });
+        continue;
+      }
       const wantedName =
         envFile && m.varName ? m.varName : rule.id === "generic-secret" && m.varName ? toEnvName(m.varName) : rule.envName;
       const envName = assignEnvName(m.secret, wantedName);
@@ -293,7 +309,8 @@ export function scanFiles(input: SourceFile[]): ScanOutput {
 
   const order: Record<Severity, number> = { critical: 0, high: 1, medium: 2 };
   findings.sort((a, b) => order[a.severity] - order[b.severity] || a.file.localeCompare(b.file) || a.line - b.line);
-  return { framework, files, findings, linesScanned };
+  ignored.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
+  return { framework, files, findings, ignored, linesScanned };
 }
 
 /** 100 = nothing found. Each unique leaked secret costs points by severity. */

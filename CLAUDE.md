@@ -57,6 +57,7 @@ A test asserts that the serialized result never contains the raw key.
 - **`.env` files are scanned first**, so a hard-coded value in code reuses the variable name already in `.env`.
 - **A gitignored `.env`** is not reported, except for secrets in public-prefixed variables (`NEXT_PUBLIC_`, `VITE_`, …).
 - **Exposure** (`frontend` / `server` / `env-file` / `config`) is a path, directive and framework heuristic in `exposure.ts`. A `frontend` finding is escalated to critical unless the rule is `publicByDesign`.
+- **Not-a-secret markers:** a match on a line containing `ihoraa-ignore` or `gitleaks:allow` is not reported. Its location goes into `ScanResult.ignored` instead, and the results screen lists it, so a marker can never hide a leak silently.
 - **Placeholders:** `isPlaceholder` treats masked bullets (`•`) and `IHORAA_` markers as placeholders. That is why a fixed project scans clean.
 
 **Fixer (`lib/fixer/index.ts`)** picks one strategy per finding:

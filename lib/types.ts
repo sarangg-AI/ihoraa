@@ -90,12 +90,20 @@ export interface ScanStats {
   linesScanned: number;
 }
 
+/** A match the code marked as not secret (`ihoraa-ignore`). Location only, never the value. */
+export interface IgnoredFinding {
+  file: string;
+  line: number;
+}
+
 export interface ScanResult {
   projectName: string;
   framework: Framework;
   stats: ScanStats;
   score: number;
   findings: Finding[];
+  /** Shown to the user so a marker can never hide a leak silently. */
+  ignored: IgnoredFinding[];
   plan: FixPlan;
 }
 

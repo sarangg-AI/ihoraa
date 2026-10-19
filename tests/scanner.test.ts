@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { analyze } from "../lib/analyze";
 import { isGitIgnored, scanFiles, securityScore } from "../lib/scanner";
 import { classifyExposure } from "../lib/scanner/exposure";
 import { maskSecret } from "../lib/scanner/mask";
@@ -163,6 +164,35 @@ describe(".env files", () => {
     ]);
     expect(findings).toHaveLength(1);
     expect(findings[0].envName).toBe("MY_STRIPE");
+  });
+});
+
+describe("not-a-secret markers", () => {
+  it("skips a match marked ihoraa-ignore or gitleaks:allow and reports where", () => {
+    const scan = scanFiles([
+      { path: "server/a.js", content: `const demoSecret = "${fake.generic()}"; // ihoraa-ignore\n` },
+      { path: ".env", content: `STRIPE_SECRET_KEY=${fake.stripeLive()} # gitleaks:allow\n` },
+    ]);
+    expect(scan.findings).toHaveLength(0);
+    expect(scan.ignored).toEqual([
+      { file: ".env", line: 1 },
+      { file: "server/a.js", line: 1 },
+    ]);
+  });
+
+  it("only hides the line the marker is on", () => {
+    const scan = scanFiles([
+      { path: "server/a.js", content: `// ihoraa-ignore\nconst paymentSecret = "${fake.generic()}";\n` },
+    ]);
+    expect(scan.findings).toHaveLength(1);
+    expect(scan.ignored).toHaveLength(0);
+  });
+
+  it("never sends the ignored value to the browser", () => {
+    const secret = fake.openai();
+    const { result } = analyze({ projectName: "p", files: [{ path: "server/a.js", content: `k("${secret}"); // ihoraa-ignore\n` }] });
+    expect(result.ignored).toEqual([{ file: "server/a.js", line: 1 }]);
+    expect(JSON.stringify(result)).not.toContain(secret);
   });
 });
 

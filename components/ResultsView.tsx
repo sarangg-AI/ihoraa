@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, ChevronRight, CircleCheck, ExternalLink, Info, RotateCcw, ShieldAlert, X } from "lucide-react";
-import type { Finding, ScanResult, Severity } from "@/lib/types";
+import { ArrowRight, ChevronRight, CircleCheck, ExternalLink, EyeOff, Info, RotateCcw, ShieldAlert, X } from "lucide-react";
+import type { Finding, IgnoredFinding, ScanResult, Severity } from "@/lib/types";
 import { Button, Card, cn, EXPOSURE_INFO, ExposureBadge, ProviderMark, SeverityBadge } from "./ui";
 
 const FRAMEWORK_LABEL: Record<ScanResult["framework"], string> = {
@@ -154,6 +154,34 @@ export function FindingDrawer({ finding, onClose }: { finding: Finding; onClose:
   );
 }
 
+/** Lists matches the code marked as not secret, so a marker never hides a leak silently. */
+function IgnoredNote({ ignored, className }: { ignored: IgnoredFinding[]; className?: string }) {
+  if (ignored.length === 0) return null;
+  const shown = ignored.slice(0, 5);
+  const n = ignored.length;
+  return (
+    <Card className={cn("flex items-start gap-3 p-4 text-left text-sm text-muted", className)}>
+      <EyeOff className="mt-0.5 size-5 shrink-0 text-dim" aria-hidden />
+      <p>
+        <span className="font-medium text-text">
+          {n} possible {n === 1 ? "key was" : "keys were"} skipped
+        </span>{" "}
+        because the code marks {n === 1 ? "it" : "them"} as not secret (<code className="font-mono">ihoraa-ignore</code> or{" "}
+        <code className="font-mono">gitleaks:allow</code>):{" "}
+        {shown.map((g, i) => (
+          <span key={`${g.file}:${g.line}`}>
+            {i > 0 && ", "}
+            <span className="font-mono text-xs text-accent-strong">
+              {g.file}:{g.line}
+            </span>
+          </span>
+        ))}
+        {n > shown.length && ` and ${n - shown.length} more`}. If you didn&apos;t add these markers yourself, check those lines.
+      </p>
+    </Card>
+  );
+}
+
 function CleanResult({ result, onRestart }: { result: ScanResult; onRestart: () => void }) {
   return (
     <div className="mx-auto w-full max-w-xl px-4 py-20 text-center">
@@ -172,6 +200,7 @@ function CleanResult({ result, onRestart }: { result: ScanResult; onRestart: () 
           <li>Scan again whenever your AI tool adds a new integration.</li>
         </ul>
       </Card>
+      <IgnoredNote ignored={result.ignored} className="mt-4" />
       <Button className="mt-8" variant="secondary" onClick={onRestart}>
         Scan another project
       </Button>
@@ -302,6 +331,8 @@ export function ResultsView({ result, onSecure, onRestart }: { result: ScanResul
           {shown.length === 0 && <li className="px-5 py-10 text-center text-sm text-muted">Nothing in this category.</li>}
         </ul>
       </Card>
+
+      <IgnoredNote ignored={result.ignored} className="mt-4" />
 
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-bg/85 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl flex-col items-stretch gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
