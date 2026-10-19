@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useState } from "react";
 import { buildSecuredZip, readDroppedItems, readFileList, readZip, sourceFiles, UploadError, type Project } from "@/lib/client/project";
 import { demoProject } from "@/lib/client/demo";
@@ -129,7 +130,9 @@ export function IhoraaApp() {
             <Logo />
           </button>
           <Stepper step={step.name} />
-          <span className="rounded-full border border-border-strong px-2.5 py-0.5 text-[11px] font-medium text-muted">Prototype</span>
+          <Link href="/privacy" className="text-xs font-medium text-muted hover:text-text">
+            Privacy
+          </Link>
         </div>
       </header>
 
@@ -160,7 +163,10 @@ export function IhoraaApp() {
       </main>
 
       <footer className="border-t border-border/70 py-6 text-center text-xs text-dim">
-        Ihoraa prototype · Your code is scanned in memory and never stored.
+        Ihoraa · Your code is scanned in memory and never stored. ·{" "}
+        <Link href="/privacy" className="underline-offset-2 hover:text-muted hover:underline">
+          Privacy
+        </Link>
       </footer>
     </div>
   );

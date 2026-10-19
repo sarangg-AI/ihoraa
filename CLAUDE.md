@@ -38,6 +38,12 @@ This is Next.js 16 with `cacheComponents` and `partialPrefetching` turned on (se
 
 There is no server-side store, so scan and fix must stay deterministic for the same input.
 
+**Limits.**
+- Uploads are capped at `MAX_UPLOAD_BYTES` (4 MB, `lib/scanner/walk.ts`), because Vercel rejects request bodies over 4.5 MB. The browser checks this before sending and the server checks it again.
+- Both API routes call `rateLimited` (`lib/ratelimit.ts`): 30 requests per IP per 10 minutes. Counts are kept in memory for each server instance, so this is a best-effort limit, not a hard one.
+
+**Privacy page.** `app/privacy/page.tsx` describes this flow in plain English. Update it whenever upload, storage, logging or rate-limit behaviour changes.
+
 **Secret-handling invariant.** `RawFinding` (in `lib/types.ts`) carries `secret` and offsets and must never reach the browser. Only these leave the server:
 - `toPublic` output (`lib/analyze.ts`)
 - diffs masked by `maskAll` (`lib/fixer/diff.ts`)

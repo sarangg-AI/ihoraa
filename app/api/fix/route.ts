@@ -1,9 +1,12 @@
 import { analyze, BadRequest, parseScanRequest } from "@/lib/analyze";
+import { rateLimited } from "@/lib/ratelimit";
 
 // Returns the full contents of every new or changed file. The browser merges
 // them with the original upload into the secured zip. This response contains
 // the real keys (inside .env), so it is never cached or logged.
 export async function POST(request: Request) {
+  const limited = rateLimited(request);
+  if (limited) return limited;
   try {
     const req = parseScanRequest(await request.json());
     const { fix } = analyze(req);
