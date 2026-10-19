@@ -46,6 +46,17 @@ const ASSIGNMENT =
   /(?<name>[A-Za-z_$][\w$-]{0,60})['"]?\s*(?::=|=>|:|=)\s*(?<q>['"`])(?<value>[^'"`\s\\]{16,300})\k<q>/g;
 const ENV_LINE = /^[ \t]*(?:export[ \t]+)?(?<name>[A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*(?<q>['"]?)(?<value>[^\r\n'"#]*?)\k<q>[ \t]*(?:#.*)?$/gm;
 const NOT_SECRET_NAME = /(public|publishable|anon|_url$|url$|_id$|endpoint|host|region|name$|path|file|length|size|type)/i;
+// The value is a hash of a secret or an identifier pointing at one: `passwordHash`,
+// `tokenChecksum`, `apiKeyId`, `SECRET_REF`. CamelCase `Id`/`Ref`/`Arn` is checked
+// case-sensitively so names like `GOOGLE_KEY_ANDROID` still count as secrets.
+const HASH_OR_ID_NAME = /(?:hash|checksum|digest|fingerprint|sha\d*|md5|uuid|guid)$|(?:^|[_-])(?:ids?|refs?|arn)$/i;
+const CAMEL_ID_NAME = /[a-z\d](?:Ids?|Refs?|Arn)$/;
+
+/** True when a variable name suggests its value is a secret. */
+function isSecretName(name: string): boolean {
+  if (!SECRET_NAME.test(name) || NOT_SECRET_NAME.test(name)) return false;
+  return !HASH_OR_ID_NAME.test(name) && !CAMEL_ID_NAME.test(name);
+}
 
 function lineIndex(content: string): number[] {
   const starts = [0];
@@ -128,7 +139,7 @@ function findMatches(file: SourceFile, envFile: boolean): Match[] {
         known.varName = name;
         continue;
       }
-      if (!SECRET_NAME.test(name) || NOT_SECRET_NAME.test(name)) continue;
+      if (!isSecretName(name)) continue;
       if (value.length < 8 || isPlaceholder(value)) continue;
       found.push({ rule: ENV_FILE_RULE, secret: value, start, end, varName: name });
     }
@@ -144,7 +155,7 @@ function findMatches(file: SourceFile, envFile: boolean): Match[] {
       known.varName ??= name;
       continue;
     }
-    if (!SECRET_NAME.test(name) || NOT_SECRET_NAME.test(name)) continue;
+    if (!isSecretName(name)) continue;
     if (isPlaceholder(value) || !looksRandom(value)) continue;
     if (overlaps(found, start, end)) continue;
     found.push({ rule: GENERIC_RULE, secret: value, start, end, varName: name });

@@ -44,12 +44,19 @@ export function isPlaceholder(value: string): boolean {
   return false;
 }
 
+// Inline files (`data:image/png;base64,…`) and references to a secret stored in a
+// vault (AWS ARN, Google Secret Manager path, 1Password `op://`) look random but
+// are not secrets. Hex strings and UUIDs are deliberately not listed: real API
+// keys use those shapes too, so they are only skipped by variable name.
+const NOT_A_SECRET_VALUE = /^(?:data:[\w.+-]+\/[\w.+-]+[;,]|arn:aws[\w-]*:|projects\/[^/]+\/secrets\/|op:\/\/)/i;
+
 /** Generic secret heuristic: long enough, random enough and has mixed character classes. */
 export function looksRandom(value: string): boolean {
   if (value.length < 16) return false;
   if (/\s/.test(value)) return false;
   // Skip URLs, paths and file names.
   if (/^(https?:|\/|\.\/|\.\.\/)/.test(value) || /\.(js|ts|tsx|json|png|svg|css|html)$/i.test(value)) return false;
+  if (NOT_A_SECRET_VALUE.test(value)) return false;
   const classes =
     Number(/[a-z]/.test(value)) + Number(/[A-Z]/.test(value)) + Number(/[0-9]/.test(value));
   if (classes < 2) return false;

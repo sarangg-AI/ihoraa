@@ -53,6 +53,9 @@ function secretCases(): CorpusCase[] {
   const slack = fake.slack();
   const clientSecret = fake.generic();
   const readmeKey = fake.anthropic();
+  const uuidKey = uuid();
+  const hexToken = hex(40);
+  const androidKey = fake.generic();
 
   return [
     leak("provider key", "OpenAI key in a browser component", [
@@ -92,6 +95,12 @@ function secretCases(): CorpusCase[] {
     leak("generic secret", "Client secret in a JSON config", [
       file("config/oauth.json", "{", `  "clientId": "my-app-web",`, `  "clientSecret": "${clientSecret}"`, "}"),
     ], [clientSecret]),
+    // Real keys can be hex or UUID shaped, so hash/ID skipping must go by name only.
+    leak("generic secret", "UUID-shaped API key", [file("server/heroku.js", `const herokuApiKey = "${uuidKey}";`)], [uuidKey]),
+    leak("generic secret", "Hex-only API token", [file("server/mailer.py", `MAILER_API_TOKEN = "${hexToken}"`)], [hexToken]),
+    leak("generic secret", "Secret whose name ends in ANDROID", [
+      file(".env", `MAPS_API_KEY_ANDROID=${androidKey}`),
+    ], [androidKey]),
     leak(".env file", "Stripe key in a .env that is not gitignored", [
       file(".env", `STRIPE_SECRET_KEY=${stripe}`, "NEXT_PUBLIC_SITE_URL=https://myshop.io"),
       file(".gitignore", "node_modules"),
