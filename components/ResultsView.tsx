@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, ChevronRight, CircleCheck, ExternalLink, EyeOff, Info, RotateCcw, ShieldAlert, X } from "lucide-react";
 import type { Finding, IgnoredFinding, ScanResult, Severity } from "@/lib/types";
-import { Button, Card, cn, EXPOSURE_INFO, ExposureBadge, ProviderMark, SeverityBadge } from "./ui";
+import { Button, Card, cn, CONFIDENCE_INFO, ConfidenceLabel, EXPOSURE_INFO, ExposureBadge, ProviderMark, SeverityBadge } from "./ui";
 
 const FRAMEWORK_LABEL: Record<ScanResult["framework"], string> = {
   next: "Next.js",
@@ -103,6 +103,12 @@ export function FindingDrawer({ finding, onClose }: { finding: Finding; onClose:
           <section>
             <h3 className="text-xs font-semibold uppercase tracking-wider text-dim">What could happen</h3>
             <p className="mt-2 text-sm leading-relaxed">{finding.whatItCanDo}</p>
+          </section>
+
+          <section>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-dim">How sure we are</h3>
+            <ConfidenceLabel confidence={finding.confidence} large className="mt-2" />
+            <p className="mt-1 text-sm leading-relaxed text-muted">{CONFIDENCE_INFO[finding.confidence].help(finding.provider)}</p>
           </section>
 
           <section>
@@ -314,7 +320,10 @@ export function ResultsView({ result, onSecure, onRestart }: { result: ScanResul
                 <span className="truncate font-mono text-xs text-accent-strong">
                   {f.file}:{f.line}
                 </span>
-                <span className="truncate font-mono text-xs text-muted">{f.masked}</span>
+                <span className="min-w-0">
+                  <span className="block truncate font-mono text-xs text-muted">{f.masked}</span>
+                  <ConfidenceLabel confidence={f.confidence} className="mt-1" />
+                </span>
                 <span className="flex items-center gap-3 md:block">
                   <ExposureBadge exposure={f.exposure} />
                   <span className="md:hidden">

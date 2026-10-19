@@ -29,6 +29,7 @@ const GENERIC_RULE: GenericRule = {
   provider: "Unknown service",
   title: "Hard-coded secret",
   severity: "medium",
+  confidence: "medium",
   whatItCanDo: "This looks like a password or API key. Whoever finds it can use the service it unlocks as you.",
   envName: "SECRET_KEY",
 };
@@ -290,6 +291,7 @@ export function scanFiles(input: SourceFile[]): ScanOutput {
         title: rule.title,
         whatItCanDo: rule.whatItCanDo,
         severity,
+        confidence: rule.confidence ?? "high",
         exposure,
         file: file.path,
         line,

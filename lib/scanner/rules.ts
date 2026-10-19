@@ -1,4 +1,4 @@
-import type { Severity } from "../types";
+import type { Confidence, Severity } from "../types";
 
 // Detection rules. Patterns are adapted from the Gitleaks ruleset (MIT licensed)
 // and simplified for readability. Each pattern must be global and either expose
@@ -10,6 +10,8 @@ export interface Rule {
   title: string;
   pattern: RegExp;
   severity: Severity;
+  /** Defaults to "high": provider rules match an exact key format. */
+  confidence?: Confidence;
   whatItCanDo: string;
   envName: string;
   rotateUrl?: string;

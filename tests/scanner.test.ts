@@ -167,6 +167,17 @@ describe(".env files", () => {
   });
 });
 
+describe("confidence", () => {
+  it("is high for provider formats and medium for generic matches", () => {
+    const scan = scanFiles([
+      { path: "server/a.js", content: `k("${fake.stripeLive()}");\nconst paymentSecret = "${fake.generic()}";\n` },
+      { path: ".env", content: `SESSION_SECRET=${fake.generic()}\n` },
+    ]);
+    const byRule = Object.fromEntries(scan.findings.map((f) => [f.ruleId, f.confidence]));
+    expect(byRule).toEqual({ "stripe-secret-key": "high", "generic-secret": "medium", "env-file-secret": "medium" });
+  });
+});
+
 describe("not-a-secret markers", () => {
   it("skips a match marked ihoraa-ignore or gitleaks:allow and reports where", () => {
     const scan = scanFiles([

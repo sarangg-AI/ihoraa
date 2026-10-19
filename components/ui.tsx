@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
-import { FileKey, Globe, Server, FileCode } from "lucide-react";
-import type { Exposure, Severity } from "@/lib/types";
+import { BadgeCheck, CircleHelp, FileKey, Globe, Server, FileCode } from "lucide-react";
+import type { Confidence, Exposure, Severity } from "@/lib/types";
 
 export function cn(...classes: (string | false | null | undefined)[]): string {
   return classes.filter(Boolean).join(" ");
@@ -47,6 +47,33 @@ export function SeverityBadge({ severity }: { severity: Severity }) {
   return (
     <span className={cn("inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold capitalize ring-1 ring-inset", SEVERITY_STYLE[severity])}>
       {severity}
+    </span>
+  );
+}
+
+export const CONFIDENCE_INFO: Record<Confidence, { label: string; icon: typeof Globe; className: string; help: (provider: string) => string }> = {
+  high: {
+    label: "Definitely a key",
+    icon: BadgeCheck,
+    className: "text-muted",
+    help: (provider) => `This matches the exact format ${provider} uses for its keys.`,
+  },
+  medium: {
+    label: "Probably a key",
+    icon: CircleHelp,
+    className: "text-dim",
+    help: () =>
+      "This is a random-looking value stored under a name like \"secret\", \"token\" or \"password\". It doesn't match a known provider's format, so check that it is a real secret.",
+  },
+};
+
+export function ConfidenceLabel({ confidence, large, className }: { confidence: Confidence; large?: boolean; className?: string }) {
+  const info = CONFIDENCE_INFO[confidence];
+  const Icon = info.icon;
+  return (
+    <span className={cn("inline-flex items-center gap-1", large ? "gap-1.5 text-sm font-medium text-text" : cn("text-xs", info.className), className)}>
+      <Icon className={large ? "size-4 shrink-0" : "size-3.5 shrink-0"} aria-hidden />
+      {info.label}
     </span>
   );
 }

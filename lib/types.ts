@@ -3,6 +3,9 @@
 
 export type Severity = "critical" | "high" | "medium";
 
+/** High: matches a provider's exact key format. Medium: generic heuristic (name + randomness). */
+export type Confidence = "high" | "medium";
+
 /** Where the key lives, which decides how dangerous it is and how we fix it. */
 export type Exposure = "frontend" | "server" | "env-file" | "config";
 
@@ -27,6 +30,7 @@ export interface Finding {
   title: string;
   whatItCanDo: string;
   severity: Severity;
+  confidence: Confidence;
   exposure: Exposure;
   file: string;
   line: number;
